@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dnd-archie"
+version = "1.0.0"
+description = "Local evidence-gated D&D SRD 5.2.1 player assistant"
+requires-python = ">=3.11"
+dependencies = [
+  "PyMuPDF>=1.24,<2",
+  "PyYAML>=6,<7",
+  "httpx>=0.27,<1",
+  "python-dotenv>=1.0,<2",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["archie*"]
+namespaces = false
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+archie = "archie.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+
