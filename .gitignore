@@ -13,3 +13,4 @@ archie-regression-results.md
 # Open5e discovery snapshots are environment observations, not committed authorities.
 data/discovery/open5e/*.json
 open5e-discovery-results.md
+open5e-import-results.md

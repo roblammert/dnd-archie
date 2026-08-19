@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.0-alpha.3 — Open5e Selective Import & Snapshot System
+
+- Added `archie sources import open5e srd-2024`; alpha.3 rejects all other Open5e document keys.
+- Preserves the original Open5e document and resource JSON in immutable timestamped local snapshots.
+- Stores normalized Open5e resource records in the generic Source Library SQLite schema.
+- Added explicit `approved`, `enabled`, `license_status`, `provider`, and `provider_document_key` source state.
+- Open5e imports always land `approved=false`, `enabled=false`, priority 80, authority `approved_supplement`.
+- Missing license metadata is recorded as `license_status=missing` and blocks automatic approval/enabling.
+- Import creates zero evidence chunks; Open5e content cannot enter Retrieval v2 or LLM evidence packets in alpha.3.
+- Re-importing unchanged content is idempotent and does not create duplicate source versions or records.
+- Persistent raw snapshots can rehydrate disabled structured imports after a generated SQLite rebuild.
+- Added live Open5e import reporting and deterministic import/no-leakage tests.
+- No web application code or multi-source answering is included.
+
 ## 2.0.0-alpha.2 — Open5e Discovery and Inventory
 
 - Added an Open5e V2 client used only by explicit source-discovery commands.

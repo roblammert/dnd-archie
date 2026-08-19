@@ -18,6 +18,7 @@ class Settings:
     manifest: Path = ROOT / "sources" / "srd521" / "source.yaml"
     database: Path = ROOT / "data" / "index" / "archie.sqlite3"
     open5e_discovery_dir: Path = ROOT / "data" / "discovery" / "open5e"
+    open5e_import_dir: Path = ROOT / "sources" / "open5e"
     characters: Path = ROOT / "data" / "characters"
     open5e_base_url: str = os.getenv("ARCHIE_OPEN5E_BASE_URL", "https://api.open5e.com/v2")
     open5e_timeout: float = float(os.getenv("ARCHIE_OPEN5E_TIMEOUT", "30"))

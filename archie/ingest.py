@@ -5,6 +5,7 @@ import pymupdf
 from .config import settings
 from .db import rebuild_database, SCHEMA_VERSION
 from .source import verify_source, get_source_manifest
+from .open5e import rehydrate_open5e_imports
 
 MAX_CHARS=1800
 OVERLAP_PARAGRAPHS=1
@@ -65,12 +66,12 @@ def ingest() -> dict:
     c=rebuild_database()
     now=_now()
     with c:
-        c.execute('''INSERT INTO sources(id,name,source_type,authority_type,edition,enabled,priority,
+        c.execute('''INSERT INTO sources(id,name,source_type,authority_type,edition,enabled,approved,license_status,provider,provider_document_key,priority,
                      license_name,license_url,homepage_url,created_at,updated_at)
-                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                   (manifest.id,manifest.name,manifest.source_type,manifest.authority_type,manifest.edition,
-                   1 if manifest.enabled else 0,manifest.priority,manifest.license_name,manifest.license_url,
-                   manifest.homepage_url,now,now))
+                   1 if manifest.enabled else 0,1 if manifest.approved else 0,manifest.license_status,manifest.provider,manifest.provider_document_key,
+                   manifest.priority,manifest.license_name,manifest.license_url,manifest.homepage_url,now,now))
         cur=c.execute('''INSERT INTO source_versions(source_id,version,imported_at,content_sha256,source_uri,filename,active)
                          VALUES(?,?,?,?,?,?,1)''',
                       (manifest.id,manifest.version,now,integrity['sha256'],manifest.source_uri,manifest.filename))
@@ -103,5 +104,6 @@ def ingest() -> dict:
           'schema_version':SCHEMA_VERSION,
         }
         c.executemany('INSERT INTO metadata(key,value) VALUES(?,?)',meta.items())
+        restored=rehydrate_open5e_imports(c, now)
     c.close(); doc.close()
-    return {'ok':True,**meta}
+    return {'ok':True,**meta,'restored_open5e_sources':restored['sources'],'restored_open5e_records':restored['content_records']}

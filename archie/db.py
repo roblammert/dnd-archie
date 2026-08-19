@@ -2,7 +2,7 @@ from __future__ import annotations
 import sqlite3
 from .config import settings
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS sources(
   authority_type TEXT NOT NULL,
   edition TEXT,
   enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+  approved INTEGER NOT NULL DEFAULT 1 CHECK(approved IN (0,1)),
+  license_status TEXT NOT NULL DEFAULT 'present',
+  provider TEXT,
+  provider_document_key TEXT,
   priority INTEGER NOT NULL DEFAULT 100,
   license_name TEXT,
   license_url TEXT,

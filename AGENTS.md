@@ -1,8 +1,8 @@
-# Archie Agent Contract — v2.0.0-alpha.2
+# Archie Agent Contract — v2.0.0-alpha.3
 
 ## Purpose
 
-Archie is a player-facing D&D assistant whose rules authority comes only from explicitly enabled local evidence sources.
+Archie is a player-facing D&D assistant whose rules authority comes only from explicitly approved and enabled local evidence sources.
 
 ## Frozen trust rules
 
@@ -13,16 +13,17 @@ Archie is a player-facing D&D assistant whose rules authority comes only from ex
 
 ## v2 Source Library state
 
-- `srd521` is the only enabled rules authority in alpha.2.
-- Open5e integration in alpha.2 is **discovery/inventory only**.
-- Open5e discovery snapshots are not evidence sources.
-- Never feed Open5e discovery metadata or counts to the LLM as rules evidence.
-- Never create an Open5e `source.yaml`, `content_record`, or `evidence_chunk` from discovery alone.
-- A document appearing in Open5e does not mean Archie approves it for import.
-- Preserve each discovered document's license metadata separately from the Open5e software license.
+- `srd521` is the only approved and enabled rules authority in alpha.3.
+- `open5e:srd-2024` may be imported only as disabled structured content.
+- Import is not approval. Approval is not enablement.
+- Open5e imports must create zero evidence chunks in alpha.3.
+- Never feed imported Open5e content to the LLM as rules evidence.
+- Missing license metadata must remain visible and must block automatic approval/enabling.
+- Raw Open5e JSON and provider/document identity must be preserved for provenance and reprocessing.
+- Other Open5e document keys are outside alpha.3 import policy.
 
-## Alpha.2 scope boundary
+## Alpha.3 scope boundary
 
-Allowed: Open5e V2 document discovery, provenance metadata, resource counts, local discovery snapshots, CLI inspection, tests.
+Allowed: discovery, explicit `srd-2024` import, raw snapshots, structured records, hashes/versions, disabled manifests, inspection, deterministic tests.
 
-Not allowed: Open5e content import, source approval/enabling, source mixing, web UI, house-rule precedence, edition fallback.
+Not allowed: Open5e authority activation, evidence generation, source mixing, web UI, house-rule precedence, edition fallback.

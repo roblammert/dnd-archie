@@ -8,7 +8,7 @@ TMP_JSON="$(mktemp)"
 trap 'rm -f "$TMP_JSON"' EXIT
 
 {
-  echo "# Archie v2.0.0-alpha.2 Open5e Discovery Results"
+  echo "# Archie v2.0.0-alpha.3 Open5e Discovery Results"
   echo
   echo "Generated: $(date --iso-8601=seconds)"
   echo

@@ -7,7 +7,7 @@ from .retrieve import search, diagnose
 from .answer import ask
 from .characters import load_character,list_characters
 from .config import settings
-from .open5e import discover_open5e, inventory_from_snapshot
+from .open5e import discover_open5e, inventory_from_snapshot, import_open5e_document
 
 
 def print_answer(r):
@@ -22,10 +22,11 @@ def print_answer(r):
 
 
 def _print_sources(rows):
-    print(f"{'ID':<12} {'TYPE':<16} {'AUTHORITY':<20} {'EDITION':<9} {'ENABLED':<8} {'VERSION':<10} CHUNKS")
+    print(f"{'ID':<20} {'TYPE':<17} {'AUTHORITY':<20} {'EDITION':<9} {'APPROVED':<9} {'ENABLED':<8} {'LICENSE':<9} {'VERSION':<20} CHUNKS")
     for x in rows:
-        print(f"{x['id']:<12} {x['source_type']:<16} {x['authority_type']:<20} {(x['edition'] or '-'):<9} "
-              f"{('yes' if x['enabled'] else 'no'):<8} {(x['version'] or '-'):<10} {x['evidence_chunks']}")
+        print(f"{x['id']:<20} {x['source_type']:<17} {x['authority_type']:<20} {(x['edition'] or '-'):<9} "
+              f"{('yes' if x['approved'] else 'no'):<9} {('yes' if x['enabled'] else 'no'):<8} {x['license_status']:<9} "
+              f"{(x['version'] or '-'):<20} {x['evidence_chunks']}")
 
 
 def _short_meta(value):
@@ -54,6 +55,8 @@ def main(argv=None):
     sd.add_argument('provider',choices=['open5e']); sd.add_argument('--json',action='store_true')
     si=srcsub.add_parser('inventory',help='Inspect the latest external discovery snapshot')
     si.add_argument('provider',choices=['open5e']); si.add_argument('--document'); si.add_argument('--json',action='store_true')
+    simp=srcsub.add_parser('import',help='Import an explicitly allowed external document into the local Source Library (disabled)')
+    simp.add_argument('provider',choices=['open5e']); simp.add_argument('document'); simp.add_argument('--json',action='store_true')
 
     args=p.parse_args(argv)
     try:
@@ -82,7 +85,7 @@ def main(argv=None):
                 x=show_source(args.source_id)
                 if args.json: print(json.dumps(x,indent=2))
                 else:
-                    print(f"Source: {x['name']}\nID: {x['id']}\nType: {x['source_type']}\nAuthority: {x['authority_type']}\nEdition: {x['edition'] or '-'}\nEnabled: {'yes' if x['enabled'] else 'no'}\nPriority: {x['priority']}\nVersion: {x['version']}\nSHA-256: {x['sha256']}\nContent records: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}\nStatus: VERIFIED")
+                    print(f"Source: {x['name']}\nID: {x['id']}\nType: {x['source_type']}\nAuthority: {x['authority_type']}\nEdition: {x['edition'] or '-'}\nApproved: {'yes' if x['approved'] else 'no'}\nEnabled: {'yes' if x['enabled'] else 'no'}\nLicense status: {x['license_status']}\nProvider: {x.get('provider') or '-'}\nProvider document: {x.get('provider_document_key') or '-'}\nPriority: {x['priority']}\nVersion: {x['version']}\nSHA-256: {x['sha256']}\nContent records: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}\nStatus: VERIFIED")
             elif args.sources_cmd=='verify':
                 x=verify_sources()
                 if args.json: print(json.dumps(x,indent=2))
@@ -109,6 +112,14 @@ def main(argv=None):
                         print(f"{d['key']}: {d['name']} | resources={total} | license={_short_meta(d.get('license'))}")
                         print('  '+', '.join(f"{k}={v if v is not None else '?'}" for k,v in counts.items()))
                     print('Inventory only; no Open5e content is enabled or searchable by Archie.')
+            elif args.sources_cmd=='import':
+                x=import_open5e_document(args.document)
+                if args.json: print(json.dumps(x,indent=2))
+                else:
+                    print(f"Imported {x['source_id']} as local structured content.")
+                    print(f"Version: {x['version']}\nSHA-256: {x['content_sha256']}\nRecords: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}")
+                    print(f"Approved: no\nEnabled: no\nLicense status: {x['license_status']}")
+                    print('Import does not grant authority. Open5e content remains unavailable to answer retrieval in alpha.3.')
         elif args.cmd=='doctor':
             srcinfo=verify_source()
             print('Source: OK',srcinfo['sha256'])

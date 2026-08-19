@@ -4,6 +4,8 @@ source_type: local_document
 authority_type: official_srd
 edition: "2024"
 enabled: true
+approved: true
+license_status: present
 priority: 100
 license_name: CC-BY-4.0
 license_url: https://creativecommons.org/licenses/by/4.0/

@@ -1,0 +1,19 @@
+id: open5e:srd-2024
+name: System Reference Document 5.2
+source_type: open5e_snapshot
+authority_type: approved_supplement
+edition: '2024'
+enabled: false
+approved: false
+license_status: missing
+provider: open5e
+provider_document_key: srd-2024
+priority: 80
+license_name: null
+license_url: null
+homepage_url: https://dnd.wizards.com/resources/systems-reference-document
+version:
+  version: open5e-v2-b6caac3e9527
+  filename: raw/open5e-srd-2024-20260819T205807Z.json
+  sha256: 3e0b4cca0e16137c9be2992ad32277be0ad8801ea2299730306f394178057fdc
+  source_uri: https://api.open5e.com/v2/documents/

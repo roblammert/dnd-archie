@@ -25,12 +25,10 @@ def list_sources() -> list[dict]:
     rows=[]
     for m in discover_source_manifests():
         stats=_db_stats(m.id)
-        rows.append({
-            'id': m.id, 'name': m.name, 'source_type': m.source_type,
-            'authority_type': m.authority_type, 'edition': m.edition,
-            'enabled': m.enabled, 'priority': m.priority,
-            'version': m.version, **stats,
-        })
+        rows.append({'id':m.id,'name':m.name,'source_type':m.source_type,'authority_type':m.authority_type,
+                     'edition':m.edition,'enabled':m.enabled,'approved':m.approved,'license_status':m.license_status,
+                     'provider':m.provider,'provider_document_key':m.provider_document_key,'priority':m.priority,
+                     'version':m.version,**stats})
     return rows
 
 
@@ -42,4 +40,4 @@ def show_source(source_id: str) -> dict:
 
 def verify_sources() -> dict:
     items=verify_enabled_sources()
-    return {'ok': all(x['ok'] for x in items), 'enabled_count': len(items), 'sources': items}
+    return {'ok':all(x['ok'] for x in items),'enabled_count':len(items),'sources':items}

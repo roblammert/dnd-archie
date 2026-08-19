@@ -1,31 +1,30 @@
-# Archie v2.0.0-alpha.2
+# Archie v2.0.0-alpha.3
 
-**Stage:** Open5e Discovery and Inventory
+**Stage:** Open5e Selective Import & Snapshot System
 
-This alpha adds a read-only discovery boundary between Archie's local Source Library and the Open5e V2 API. It intentionally does **not** import Open5e game content into the trust engine.
+Alpha.3 crosses the boundary from discovery to **local possession**, but not from possession to **authority**.
 
 ## Included
 
-- explicit Open5e V2 client;
-- live `/v2/documents` source discovery;
-- per-document inventory counts for player and GM resource categories;
-- publisher/license/game-system/author/permalink provenance capture;
-- local timestamped discovery snapshots plus `latest.json`;
-- snapshot SHA-256;
-- `archie sources discover open5e`;
-- `archie sources inventory open5e [--document KEY]`;
-- deterministic tests using a mocked Open5e API;
-- all alpha.1 Source Library and v1.6 trust behavior preserved.
+- selective Open5e V2 import, restricted to `srd-2024`;
+- immutable raw JSON snapshots and SHA-256 content identities;
+- normalized `content_records` for Open5e classes, subclasses, species, spells, backgrounds, feats, equipment, magic items, rules, conditions, and creatures;
+- explicit imported/approved/enabled separation;
+- missing-license visibility and automatic-approval block;
+- disabled `open5e:srd-2024` source manifest and version metadata;
+- idempotent same-content re-import;
+- restoration of persistent imported records after SQLite rebuild;
+- zero Open5e evidence chunks and zero Open5e answer retrieval;
+- all prior trust-engine and discovery behavior preserved.
 
 ## Intentionally excluded
 
-- Open5e content import;
-- approval/enabling of Open5e documents;
-- Open5e evidence chunks or retrieval;
-- cross-source authority precedence;
-- source conflict resolution;
-- 2014 fallback behavior;
+- enabling or approving Open5e sources;
+- Open5e evidence generation;
+- multi-source retrieval/answering;
+- source precedence/conflict resolution;
+- 2014 fallback;
 - house-rule precedence;
 - web application code.
 
-Alpha.2's acceptance criterion is that Archie can tell us **what Open5e offers and under what source/license metadata without learning any new rule from it.**
+Alpha.3 acceptance criterion: Archie may store and inspect `srd-2024` locally without gaining any new answer authority from it.
