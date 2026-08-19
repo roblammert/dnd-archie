@@ -17,7 +17,10 @@ class Settings:
     # Compatibility alias retained for code/tests that previously referred to settings.manifest.
     manifest: Path = ROOT / "sources" / "srd521" / "source.yaml"
     database: Path = ROOT / "data" / "index" / "archie.sqlite3"
+    open5e_discovery_dir: Path = ROOT / "data" / "discovery" / "open5e"
     characters: Path = ROOT / "data" / "characters"
+    open5e_base_url: str = os.getenv("ARCHIE_OPEN5E_BASE_URL", "https://api.open5e.com/v2")
+    open5e_timeout: float = float(os.getenv("ARCHIE_OPEN5E_TIMEOUT", "30"))
     llm_base_url: str = os.getenv("ARCHIE_LLM_BASE_URL", "http://127.0.0.1:8080/v1")
     llm_model: str = os.getenv("ARCHIE_LLM_MODEL", "gemma4-12b-it-q4_k_m")
     llm_timeout: float = float(os.getenv("ARCHIE_LLM_TIMEOUT", "300"))

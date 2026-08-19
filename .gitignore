@@ -10,3 +10,6 @@ data/index/*.sqlite3
 data/index/*.sqlite3-*
 data/logs/
 archie-regression-results.md
+# Open5e discovery snapshots are environment observations, not committed authorities.
+data/discovery/open5e/*.json
+open5e-discovery-results.md

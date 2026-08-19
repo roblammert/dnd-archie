@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.0-alpha.2 — Open5e Discovery and Inventory
+
+- Added an Open5e V2 client used only by explicit source-discovery commands.
+- Added `archie sources discover open5e` to enumerate Open5e source documents and resource counts.
+- Added `archie sources inventory open5e` for offline inspection of the latest local discovery snapshot.
+- Captures document key/name, publisher, per-document license metadata, game system, author, publication date, permalink, and resource counts where supplied.
+- Inventories classes, subclasses, species, spells, backgrounds, feats, equipment/items, magic items, rules, conditions, and creatures without downloading full content records.
+- Uses Open5e V2 `document__key__in` filtering and result counts to minimize transferred data.
+- Stores timestamped discovery snapshots plus `latest.json`, with a deterministic SHA-256 over normalized snapshot data.
+- Adds Open5e base URL and timeout configuration.
+- Explicitly separates Open5e software licensing from each discovered content document's license metadata.
+- No Open5e document is registered, enabled, indexed, searchable, or available to the LLM in alpha.2.
+- No web application code is included.
+
 ## 2.0.0-alpha.1 — Source Library Foundation
 
 - Generalized the SQLite corpus into `sources`, `source_versions`, `content_records`, `evidence_chunks`, and FTS.
@@ -107,14 +121,3 @@ Reliability and retrieval release based on the v1.1 live regression run.
 ## 1.0.0 — 2026-08-19
 
 Initial release: pinned SRD 5.2.1 authority, page-aware ingestion, SQLite FTS5 retrieval, evidence-bound local-LLM answers, strict claim audit, character YAML storage, Pi project skills, and regression tests.
-
-## 2.0.0-alpha.1 — Source Library Foundation
-
-- Generalized the SQLite corpus into `sources`, `source_versions`, `content_records`, `evidence_chunks`, and FTS.
-- Registered SRD 5.2.1 as source `srd521` with explicit `official_srd` authority and `2024` edition metadata.
-- Preserved existing SRD evidence IDs and v1.6 trust behavior.
-- Added source metadata to every retrieved `Evidence` object.
-- Added `archie sources list`, `archie sources show`, and `archie sources verify`.
-- Moved the pinned SRD manifest to `sources/srd521/source.yaml`.
-- Index ingestion now rebuilds generated SQLite storage from scratch under the current schema.
-- No Open5e integration or web code is included in this alpha.

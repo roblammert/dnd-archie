@@ -1,24 +1,28 @@
-# Archie v2.0.0-alpha.1 — Agent Contract
+# Archie Agent Contract — v2.0.0-alpha.2
 
-This repository is the first Archie v2.0 development alpha. It preserves the frozen v1.6 trust engine while introducing a generic local Source Library.
+## Purpose
 
-## Non-negotiable trust rules
+Archie is a player-facing D&D assistant whose rules authority comes only from explicitly enabled local evidence sources.
+
+## Frozen trust rules
 
 - Gemma pretrained D&D knowledge is never a rules authority.
-- Rules claims must be grounded in enabled, approved local evidence and pass the existing audit path.
+- Every rules claim must be grounded in enabled local evidence and pass the existing audit contract.
 - Fail closed rather than guess.
-- Preserve source identity, authority type, edition, version, and evidence IDs end-to-end.
-- Do not silently mix editions or source authorities.
+- Preserve source identity and provenance through retrieval and audit.
 
-## Alpha.1 scope
+## v2 Source Library state
 
-- `srd521` is the only enabled source.
-- `srd521` authority type is `official_srd`; edition is `2024`.
-- Open5e is intentionally absent.
-- No web application code belongs in alpha.1.
-- No house-rule precedence, 2014 fallback, or source-conflict resolution belongs in alpha.1.
-- The SQLite index is generated data and may be rebuilt from source manifests/content.
+- `srd521` is the only enabled rules authority in alpha.2.
+- Open5e integration in alpha.2 is **discovery/inventory only**.
+- Open5e discovery snapshots are not evidence sources.
+- Never feed Open5e discovery metadata or counts to the LLM as rules evidence.
+- Never create an Open5e `source.yaml`, `content_record`, or `evidence_chunk` from discovery alone.
+- A document appearing in Open5e does not mean Archie approves it for import.
+- Preserve each discovered document's license metadata separately from the Open5e software license.
 
-## Architecture direction
+## Alpha.2 scope boundary
 
-CLI and future web interfaces must call the same Archie core services. Do not put rules, retrieval, or authority logic into presentation layers.
+Allowed: Open5e V2 document discovery, provenance metadata, resource counts, local discovery snapshots, CLI inspection, tests.
+
+Not allowed: Open5e content import, source approval/enabling, source mixing, web UI, house-rule precedence, edition fallback.

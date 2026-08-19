@@ -7,6 +7,7 @@ from .retrieve import search, diagnose
 from .answer import ask
 from .characters import load_character,list_characters
 from .config import settings
+from .open5e import discover_open5e, inventory_from_snapshot
 
 
 def print_answer(r):
@@ -27,6 +28,12 @@ def _print_sources(rows):
               f"{('yes' if x['enabled'] else 'no'):<8} {(x['version'] or '-'):<10} {x['evidence_chunks']}")
 
 
+def _short_meta(value):
+    if isinstance(value, dict):
+        return str(value.get('name') or value.get('key') or value.get('title') or '-')
+    return str(value or '-')
+
+
 def main(argv=None):
     p=argparse.ArgumentParser(prog='archie',description='Evidence-gated D&D player assistant')
     sub=p.add_subparsers(dest='cmd',required=True)
@@ -43,6 +50,10 @@ def main(argv=None):
     sl=srcsub.add_parser('list'); sl.add_argument('--json',action='store_true')
     ss=srcsub.add_parser('show'); ss.add_argument('source_id'); ss.add_argument('--json',action='store_true')
     sv=srcsub.add_parser('verify'); sv.add_argument('--json',action='store_true')
+    sd=srcsub.add_parser('discover',help='Discover external source-provider catalogs without importing content')
+    sd.add_argument('provider',choices=['open5e']); sd.add_argument('--json',action='store_true')
+    si=srcsub.add_parser('inventory',help='Inspect the latest external discovery snapshot')
+    si.add_argument('provider',choices=['open5e']); si.add_argument('--document'); si.add_argument('--json',action='store_true')
 
     args=p.parse_args(argv)
     try:
@@ -79,6 +90,25 @@ def main(argv=None):
                     for item in x['sources']:
                         print(f"OK {item['source_id']} {item['version']} {item['sha256']}")
                     print(f"Verified {x['enabled_count']} enabled source(s).")
+            elif args.sources_cmd=='discover':
+                x=discover_open5e()
+                if args.json: print(json.dumps(x,indent=2))
+                else:
+                    print(f"Open5e V2 discovery complete: {x['document_count']} document(s)")
+                    print(f"Snapshot: {x['snapshot_path']}")
+                    print(f"SHA-256: {x['snapshot_sha256']}")
+                    print('No Open5e content was imported into Archie.')
+            elif args.sources_cmd=='inventory':
+                x=inventory_from_snapshot(args.document)
+                if args.json: print(json.dumps(x,indent=2))
+                else:
+                    print(f"Open5e V2 inventory snapshot: {x['generated_at']}")
+                    for d in x['documents']:
+                        counts=d.get('resource_counts',{})
+                        total=sum(v for v in counts.values() if isinstance(v,int))
+                        print(f"{d['key']}: {d['name']} | resources={total} | license={_short_meta(d.get('license'))}")
+                        print('  '+', '.join(f"{k}={v if v is not None else '?'}" for k,v in counts.items()))
+                    print('Inventory only; no Open5e content is enabled or searchable by Archie.')
         elif args.cmd=='doctor':
             srcinfo=verify_source()
             print('Source: OK',srcinfo['sha256'])

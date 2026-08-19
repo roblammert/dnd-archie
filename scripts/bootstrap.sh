@@ -12,6 +12,6 @@ python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
 python -m archie.cli sources verify
 python -m archie.cli ingest
-printf '\nArchie v2.0.0-alpha.1 bootstrap complete.\n'
+printf '\nArchie v2.0.0-alpha.2 bootstrap complete.\n'
 printf 'Review .env and set your local LLM endpoint if needed.\n'
 printf 'Try: python -m archie.cli sources list\n'
