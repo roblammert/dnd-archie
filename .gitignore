@@ -7,3 +7,4 @@ data/index/*.sqlite3-*
 data/logs/
 .env
 builds/
+.archie-patch-backups/
