@@ -1,4 +1,7 @@
-# dnd-archie-v1.5.1
+# dnd-archie-v1.6.0-rc.1
+
+> **Release candidate:** v1.6.0-rc.1 keeps the v1.6 epistemic and permission guards unchanged and hardens only malformed auditor structured-output repair and observability. The authoritative rules source remains SRD 5.2.1 only.
+
 
 **Archie** is a local, evidence-gated D&D player assistant for Pi and an OpenAI-compatible local LLM server. Its sole authority for D&D rules is the bundled **Dungeons & Dragons SRD 5.2.1** PDF.
 
@@ -26,7 +29,7 @@ Archie does not pretend the model has forgotten D&D. Instead, it separates **aut
 ## First run
 
 ```bash
-cd dnd-archie-v1.5.1
+cd dnd-archie-v1.6.0-rc.1
 ./scripts/bootstrap.sh
 source .venv/bin/activate
 python -m archie.cli doctor
@@ -72,7 +75,7 @@ python -m archie.cli characters
 Start Pi from the repository root so it loads `AGENTS.md`, `.pi/APPEND_SYSTEM.md`, and `.pi/skills/`:
 
 ```bash
-cd dnd-archie-v1.5.1
+cd dnd-archie-v1.6.0-rc.1
 pi
 ```
 

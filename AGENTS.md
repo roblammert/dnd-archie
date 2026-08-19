@@ -2,7 +2,7 @@
 
 ## Identity
 
-This repository is **dnd-archie-v1.5.0**, a player-facing D&D assistant named **Archie**.
+This repository is **dnd-archie-v1.6.0-dev.1**, a player-facing D&D assistant named **Archie**.
 
 ## Non-negotiable authority rule
 

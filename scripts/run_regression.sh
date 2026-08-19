@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -u
 cd "$(dirname "$0")/.."
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 OUTPUT="archie-regression-results.md"
 tests=(
 "What happens when I have advantage on a roll?"

@@ -22,11 +22,14 @@ dnd_archie.egg-info/top_level.txt
 tests/test_answer_guard.py
 tests/test_audit_contract_v15.py
 tests/test_characters.py
-tests/test_config.py
+tests/test_epistemic_v16.py
 tests/test_index_binding.py
 tests/test_ingest_retrieve.py
 tests/test_llm_contract_v15.py
+tests/test_premise_enforcement_v163.py
+tests/test_premise_hardening_v162.py
+tests/test_release_candidate_rc1.py
+tests/test_release_candidate_v164.py
 tests/test_reliability_v151.py
 tests/test_retrieval_v15.py
-tests/test_retrieval_v2.py
 tests/test_source.py

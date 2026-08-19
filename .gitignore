@@ -9,4 +9,4 @@ dist/
 data/index/*.sqlite3
 data/index/*.sqlite3-*
 data/logs/
-archie-regression-results*.md
+archie-regression-results.md

@@ -1,30 +1,25 @@
-# v1.5.1 release validation
+# v1.6.0-rc.1 release validation
 
-Release date: 2026-08-19
+Dev.4 is the release-candidate hardening build from dev.3.
 
-Validated in the build environment:
+Required deterministic gates:
 
-- Approved SRD SHA-256: PASS
-- PDF pages extracted: 364
-- Evidence chunks generated: 1,067
-- SQLite FTS5 index: PASS
-- Retrieval v2 known-evidence coverage: PASS
-- Multi-concept retrieval: PASS
-- Cross-page neighbor expansion: PASS
-- Child-language alias mapping: PASS
-- Source/index hash binding: PASS
-- Invented evidence-ID rejection: PASS
-- Answer-coverage fail-closed gate: PASS
-- llama.cpp JSON/thinking/output-cap request contract: PASS (mocked deterministic test)
-- Character path containment: PASS
-- Python compile check: PASS
-- Deterministic pytest suite: **21 passed**
-- Editable package discovery/install metadata: PASS in build environment
+```bash
+./scripts/release_check.sh
+```
 
-Not validated in the build environment:
+This verifies the pinned SRD source, rebuilds the index, runs the complete deterministic test suite, compiles the code, and runs retrieval smoke checks.
 
-- Connection to the user's actual llama-server on port 61000
-- Full live Gemma4-12B v1.5 regression output
-- Pi startup against the user's installed runtime
+Required live Gemma acceptance:
 
-Run `./scripts/run_regression.sh` against the user's local model before declaring v1.5 player-ready.
+```bash
+./scripts/run_regression.sh
+./scripts/run_epistemic_regression.sh
+```
+
+Acceptance targets:
+
+- Existing 38-question baseline remains semantically acceptable.
+- Existing 7-question epistemic suite remains acceptable.
+- `Can I use a longbow while Prone?` must not infer permission from Disadvantage or absence of prohibition.
+- A single malformed auditor JSON response should be retried once; a repeated malformed response must fail closed.

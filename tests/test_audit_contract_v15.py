@@ -24,6 +24,7 @@ def test_ask_fails_closed_when_answer_has_uncovered_mechanic(monkeypatch):
         },
         {
             "claims":[{"index":0,"supported":True,"reason":"supported"}],
+            "premise_coverage_complete":True,
             "all_supported":True,
             "answer_fully_covered":False,
             "coverage_reason":"extra mechanic is not represented by a claim"

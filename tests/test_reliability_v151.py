@@ -68,6 +68,7 @@ def test_audit_requires_every_answer_unit(monkeypatch):
                 {"index":0,"text":"You may do X","supporting_claim_indexes":[],"supported":False,"reason":"permission unsupported"},
                 {"index":1,"text":"Doing X has Disadvantage","supporting_claim_indexes":[0],"supported":True,"reason":"supported"}
             ],
+            "premise_coverage_complete":True,
             "all_supported":True,
             "answer_fully_covered":False,
             "coverage_reason":"permission is not evidenced"
@@ -89,6 +90,7 @@ def test_audit_missing_answer_units_fails_closed(monkeypatch):
         },
         {
             "claims":[{"index":0,"supported":True,"reason":"supported"}],
+            "premise_coverage_complete":True,
             "all_supported":True,
             "answer_fully_covered":True,
             "coverage_reason":"claimed covered"

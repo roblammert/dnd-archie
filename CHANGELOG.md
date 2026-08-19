@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.6.0rc1 — Auditor repair observability release candidate
+
+- Replaced the dev.4 audit retry with a compact repair-specific system contract.
+- The repair request explicitly enumerates required premise and claim indexes.
+- A successful structured-output repair is recorded in provenance as `Audit structured-output correction succeeded.`
+- Exhausted repair now reports both the malformed initial audit and malformed correction retry.
+- Transport/server failures still remain operational errors and are never converted into rules uncertainty.
+- No changes to Retrieval v2, SRD authority, premise guards, permission guards, or the 38+7 live suites.
+
+## 1.6.0.dev4 — Release-candidate permission/auditor hardening
+
+- Extended deterministic unresolved-premise guarding to direct Prone + bow/longbow permission questions, including `Can I`, `May I`, `Am I allowed`, `Is it allowed/legal`, and `While Prone, can I` forms.
+- Kept the permission guard narrow so directly answerable `Can I` questions continue through normal SRD evidence evaluation.
+- Added one bounded correction retry when the evidence auditor returns malformed structured output.
+- A second malformed audit still fails closed as `PARTIAL`; transport/server failures remain operational errors.
+- Added deterministic dev.4 tests for unresolved, positively answerable, and negatively answerable permission questions plus auditor retry/fail-closed behavior.
+- Existing 38-question baseline and 7-question epistemic live suites remain unchanged.
+- Retrieval v2 and SRD 5.2.1 sole-authority contract are unchanged.
+
+## 1.6.0.dev3 — Premise-state enforcement
+
+- Added deterministic `forced_unresolved_premise()` guards for broad inference families that narrower evidence must not settle.
+- Invisible targeting and Invisible automatic-miss propositions are forced to `UNRESOLVED` unless a future evidence path explicitly proves the broader proposition.
+- Prone/bow permission inference is likewise guarded from being inferred merely from an attack-roll penalty.
+- Forced unresolved state is applied in Python before contract validation, so invalid or overconfident model status values cannot bypass the guard.
+- Claims that directly resolve a forced-unresolved proposition are removed before the player-facing answer is canonicalized.
+- The unresolved renderer states only the unresolved proposition and independently supported SRD claims.
+- Added deterministic dev.3 regression tests for targeting, automatic misses, permission inference, invalid model statuses, and claim filtering.
+- Existing 38-question and 7-question live regression suites remain unchanged.
+- SRD 5.2.1 remains the sole D&D rules authority.
+
+## 1.6.0.dev2 — Premise classification hardening
+
+- Narrowed premise detection so ordinary yes/no questions and character/calculation inputs do not become material premises.
+- Added deterministic absence-of-evidence inference detection.
+- Canonicalized unresolved player-facing answers to neutral language after generation.
+- Restored v1.5.1 baseline behavior for Passive Perception, Advantage stacking, and Heroic Inspiration interactions.
+- Added premise-hardening regression tests.
+
+## 1.6.0.dev1 — Epistemic premise classification
+
+- Added explicit material-premise states: `SUPPORTED`, `CONTRADICTED`, and `UNRESOLVED`.
+- `SUPPORTED` and `CONTRADICTED` premises require exact SRD evidence IDs; `UNRESOLVED` premises may not claim evidentiary support.
+- An answer with an unresolved material premise cannot be marked `VERIFIED` or `DERIVED`.
+- Strict audit now checks that every material proposition asserted or presupposed by the player's question is classified.
+- Added a non-entailment rule: absence of evidence for X never establishes not-X, and absence of evidence for not-X never establishes X.
+- Added explicit protection against using attack, visibility, sight-required effects, or penalties to settle broader targeting/permission propositions.
+- Strict audit now runs for all generated responses with retrieved evidence, including claim-free `PARTIAL`/`NOT_IN_SRD` responses.
+- Added v1.6 epistemic regression tests while preserving the v1.5.1 contracts and 38-question compatibility suite.
+- SRD 5.2.1 remains the sole D&D rules authority.
+
+
 ## 1.5.1 — Reliability patch
 
 - Added one bounded model-contract correction retry for malformed answer structures.

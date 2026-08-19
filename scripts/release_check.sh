@@ -8,4 +8,4 @@ python -m pytest -q
 python -m compileall -q archie scripts
 python -m archie.cli search "Passive Perception" --top-k 1 >/dev/null
 python -m archie.cli diagnose-retrieval "What does Prone do?" --top-k 3 >/dev/null
-echo "Archie v1.5.1 deterministic release checks PASS"
+echo "Archie v1.6.0-rc.1 deterministic release checks PASS"
