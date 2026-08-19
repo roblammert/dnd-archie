@@ -29,6 +29,7 @@ class Settings:
     top_k: int = int(os.getenv("ARCHIE_TOP_K", "6"))
     retrieval_candidate_k: int = int(os.getenv("ARCHIE_RETRIEVAL_CANDIDATE_K", "36"))
     neighbor_radius: int = int(os.getenv("ARCHIE_NEIGHBOR_RADIUS", "1"))
+    active_edition: str = os.getenv("ARCHIE_ACTIVE_EDITION", "2024")
     strict_audit: bool = os.getenv("ARCHIE_STRICT_AUDIT", "1").lower() not in {"0", "false", "no"}
 
 settings = Settings()

@@ -29,7 +29,7 @@ RESOURCE_ENDPOINTS: dict[str, str] = {
 
 # Alpha.3 deliberately supports only one import candidate. Expanding this set is
 # an explicit release decision, not a runtime discovery side effect.
-ALPHA3_ALLOWED_DOCUMENTS = {"srd-2024"}
+ALPHA4_ALLOWED_DOCUMENTS = {"srd-2024"}
 
 
 class Open5eError(RuntimeError):
@@ -278,8 +278,8 @@ def _write_import_manifest(document: Open5eDocument, raw_path: Path, content_sha
 
 
 def import_open5e_document(document_key: str, client: Open5eClient | None = None) -> dict[str, Any]:
-    if document_key not in ALPHA3_ALLOWED_DOCUMENTS:
-        raise Open5eError(f"Alpha.3 import policy allows only: {', '.join(sorted(ALPHA3_ALLOWED_DOCUMENTS))}. Requested: {document_key}")
+    if document_key not in ALPHA4_ALLOWED_DOCUMENTS:
+        raise Open5eError(f"Alpha.4 import policy allows only: {', '.join(sorted(ALPHA4_ALLOWED_DOCUMENTS))}. Requested: {document_key}")
     if not settings.database.exists():
         raise Open5eError("Source Library database not found. Run: python -m archie.cli ingest")
     client=client or Open5eClient(); document=client.document(document_key)
@@ -337,8 +337,7 @@ def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, int
     """Restore disabled Open5e structured imports after a generated index rebuild.
 
     Persistent storage is the source manifest plus raw JSON snapshot. SQLite is
-    generated and can be rebuilt without losing imported content. No evidence
-    chunks are created in alpha.3.
+    generated and can be rebuilt without losing imported content. Enabled, approved imports have evidence chunks reconstructed in alpha.4.
     """
     from .source import discover_source_manifests
 
@@ -360,8 +359,9 @@ def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, int
         c.execute(
             '''INSERT INTO sources(id,name,source_type,authority_type,edition,enabled,approved,license_status,provider,provider_document_key,
                priority,license_name,license_url,homepage_url,created_at,updated_at)
-               VALUES(?,?,?,?,?,0,0,?,?,?,?,?,?,?,?,?)''',
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (manifest.id, manifest.name, manifest.source_type, manifest.authority_type, manifest.edition,
+             1 if manifest.enabled else 0, 1 if manifest.approved else 0,
              manifest.license_status, manifest.provider, manifest.provider_document_key, manifest.priority,
              manifest.license_name, manifest.license_url, manifest.homepage_url, now, now),
         )
@@ -387,6 +387,11 @@ def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, int
                      json.dumps(obj, sort_keys=True, ensure_ascii=False), now),
                 )
                 restored_records += 1
+        if manifest.enabled:
+            if not manifest.approved or manifest.license_status != 'present':
+                raise Open5eError(f'Enabled stored source is not approved/licensed: {manifest.id}')
+            from .structured_evidence import materialize_structured_evidence
+            materialize_structured_evidence(c, manifest.id)
         restored_sources += 1
 
     return {'sources': restored_sources, 'content_records': restored_records}

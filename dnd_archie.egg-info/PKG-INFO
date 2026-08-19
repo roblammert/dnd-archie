@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: dnd-archie
-Version: 2.0.0a3
-Summary: Local evidence-gated D&D player assistant with Open5e V2 source discovery
+Version: 2.0.0a4
+Summary: Local evidence-gated D&D player assistant with an authority-aware multi-source trust engine
 Requires-Python: >=3.11
 License-File: LICENSE
 Requires-Dist: PyMuPDF<2,>=1.24

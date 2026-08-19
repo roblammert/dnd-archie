@@ -102,8 +102,8 @@ def _render_unresolved_answer(premises: list[dict], claims: list[dict]) -> str:
     quoted='; '.join(f'“{p["text"].strip()}”' for p in unresolved)
     if claims:
         established=' '.join(c['text'].strip().rstrip('.')+'.' for c in claims)
-        return f"I can't verify this premise from SRD 5.2.1: {quoted} What the SRD evidence does establish is: {established}"
-    return f"I can't verify this premise from SRD 5.2.1: {quoted}"
+        return f"I can't verify this premise from the approved local sources: {quoted} What the approved evidence does establish is: {established}"
+    return f"I can't verify this premise from the approved local sources: {quoted}"
 
 
 
@@ -341,7 +341,7 @@ def _audit_answer(audit_user: str, claim_count: int, premise_count: int):
 def ask(question: str, character_text: str|None=None, strict_audit: bool|None=None) -> AnswerResult:
     evidence=search(question)
     if not evidence:
-        return AnswerResult('NOT_IN_SRD','I could not retrieve enough SRD 5.2.1 evidence to verify that. This does not mean the rule or option does not exist elsewhere in D&D.',[],[],None,'No local SRD evidence retrieved.',[])
+        return AnswerResult('NOT_IN_SRD','I could not retrieve enough approved local evidence to verify that. This does not mean the rule or option does not exist elsewhere in D&D.',[],[],None,'No approved local evidence retrieved.',[])
     packet=evidence_packet(evidence)
     mode=premise_mode(question)
     absence_guard=absence_inference_guard(question)
@@ -362,7 +362,7 @@ def ask(question: str, character_text: str|None=None, strict_audit: bool|None=No
     if any(p.get('state')=='UNRESOLVED' for p in premises):
         obj['status']='PARTIAL' if claims else 'NOT_IN_SRD'
         obj['answer']=_render_unresolved_answer(premises,claims)
-        obj['reason']='The material premise is unresolved by the supplied SRD evidence; only independently supported claims are stated.'
+        obj['reason']='The material premise is unresolved by the supplied approved evidence; only independently supported claims are stated.'
     if do_audit:
         audit_user=(f"ORIGINAL QUESTION:\n{question}\n\nPREMISE MODE: {mode}\nABSENCE-INFERENCE GUARD: {'ACTIVE' if absence_guard else 'INACTIVE'}\nFORCED UNRESOLVED PREMISE: {forced_premise or '(none)'}\n\nCHARACTER DATA:\n{character_text or '(none)'}\n\nEVIDENCE PACKET:\n{packet}"
                     f"\n\nPLAYER-FACING ANSWER:\n{obj['answer']}"

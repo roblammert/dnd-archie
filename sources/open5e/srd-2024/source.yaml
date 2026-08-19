@@ -3,17 +3,20 @@ name: System Reference Document 5.2
 source_type: open5e_snapshot
 authority_type: approved_supplement
 edition: '2024'
-enabled: false
-approved: false
-license_status: missing
+enabled: true
+approved: true
+license_status: present
 provider: open5e
 provider_document_key: srd-2024
 priority: 80
-license_name: null
-license_url: null
+license_name: Creative Commons Attribution 4.0 International
+license_url: https://creativecommons.org/licenses/by/4.0/
 homepage_url: https://dnd.wizards.com/resources/systems-reference-document
 version:
   version: open5e-v2-b6caac3e9527
-  filename: raw/open5e-srd-2024-20260819T205807Z.json
-  sha256: 3e0b4cca0e16137c9be2992ad32277be0ad8801ea2299730306f394178057fdc
+  filename: raw/open5e-srd-2024-20260819T211801Z.json
+  sha256: ffe19459cc7b10c8bf5d037b026f2651e820045a935863f66f15b2580dc3512e
   source_uri: https://api.open5e.com/v2/documents/
+approval_note: alpha.4 live acceptance explicit approval
+approved_at: '2026-08-19T21:18:02+00:00'
+enabled_at: '2026-08-19T21:18:02+00:00'

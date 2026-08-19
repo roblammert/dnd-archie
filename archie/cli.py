@@ -1,7 +1,7 @@
 from __future__ import annotations
 import argparse, json, sys
 from .source import verify_source
-from .source_library import list_sources, show_source, verify_sources
+from .source_library import list_sources, show_source, verify_sources, approve_source, enable_source, disable_source, source_conflicts
 from .ingest import ingest
 from .retrieve import search, diagnose
 from .answer import ask
@@ -16,7 +16,7 @@ def print_answer(r):
         print('\nEvidence-backed claims:')
         byid={e.evidence_id:e for e in r.evidence}
         for c in r.claims:
-            refs=', '.join(f"{x} (PDF p.{byid[x].page_pdf})" for x in c['evidence_ids'])
+            refs=', '.join((f"{x} (PDF p.{byid[x].page_pdf}, {byid[x].source_id})" if byid[x].page_pdf is not None else f"{x} ({byid[x].source_id})") for x in c['evidence_ids'])
             print(f"- {c['text']} [{c['kind']}] — {refs}")
     print(f"\nProvenance: {r.reason}")
 
@@ -57,6 +57,14 @@ def main(argv=None):
     si.add_argument('provider',choices=['open5e']); si.add_argument('--document'); si.add_argument('--json',action='store_true')
     simp=srcsub.add_parser('import',help='Import an explicitly allowed external document into the local Source Library (disabled)')
     simp.add_argument('provider',choices=['open5e']); simp.add_argument('document'); simp.add_argument('--json',action='store_true')
+    sap=srcsub.add_parser('approve',help='Explicitly approve an imported source after license review')
+    sap.add_argument('source_id'); sap.add_argument('--license-name',required=True); sap.add_argument('--license-url',required=True); sap.add_argument('--note'); sap.add_argument('--json',action='store_true')
+    sen=srcsub.add_parser('enable',help='Enable an approved source and materialize searchable evidence')
+    sen.add_argument('source_id'); sen.add_argument('--json',action='store_true')
+    sdis=srcsub.add_parser('disable',help='Disable a supplemental source without deleting its local snapshot')
+    sdis.add_argument('source_id'); sdis.add_argument('--json',action='store_true')
+    scf=srcsub.add_parser('conflicts',help='List same-named structured records across enabled sources')
+    scf.add_argument('--json',action='store_true')
 
     args=p.parse_args(argv)
     try:
@@ -85,7 +93,7 @@ def main(argv=None):
                 x=show_source(args.source_id)
                 if args.json: print(json.dumps(x,indent=2))
                 else:
-                    print(f"Source: {x['name']}\nID: {x['id']}\nType: {x['source_type']}\nAuthority: {x['authority_type']}\nEdition: {x['edition'] or '-'}\nApproved: {'yes' if x['approved'] else 'no'}\nEnabled: {'yes' if x['enabled'] else 'no'}\nLicense status: {x['license_status']}\nProvider: {x.get('provider') or '-'}\nProvider document: {x.get('provider_document_key') or '-'}\nPriority: {x['priority']}\nVersion: {x['version']}\nSHA-256: {x['sha256']}\nContent records: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}\nStatus: VERIFIED")
+                    print(f"Source: {x['name']}\nID: {x['id']}\nType: {x['source_type']}\nAuthority: {x['authority_type']}\nEdition: {x['edition'] or '-'}\nApproved: {'yes' if x['approved'] else 'no'}\nEnabled: {'yes' if x['enabled'] else 'no'}\nLicense status: {x['license_status']}\nProvider: {x.get('provider') or '-'}\nProvider document: {x.get('provider_document_key') or '-'}\nPriority: {x['priority']}\nVersion: {x['version']}\nSnapshot file SHA-256: {x['sha256']}\nCanonical content SHA-256: {x.get('active_content_sha256') or '-'}\nContent records: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}\nStatus: VERIFIED")
             elif args.sources_cmd=='verify':
                 x=verify_sources()
                 if args.json: print(json.dumps(x,indent=2))
@@ -119,7 +127,25 @@ def main(argv=None):
                     print(f"Imported {x['source_id']} as local structured content.")
                     print(f"Version: {x['version']}\nSHA-256: {x['content_sha256']}\nRecords: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}")
                     print(f"Approved: no\nEnabled: no\nLicense status: {x['license_status']}")
-                    print('Import does not grant authority. Open5e content remains unavailable to answer retrieval in alpha.3.')
+                    print('Import does not grant authority. Open5e content remains unavailable to answer retrieval in alpha.4.')
+            elif args.sources_cmd=='approve':
+                x=approve_source(args.source_id,license_name=args.license_name,license_url=args.license_url,note=args.note)
+                if args.json: print(json.dumps(x,indent=2,default=str))
+                else: print(f"Approved {args.source_id}. License: {x['license_name']} | Enabled: no")
+            elif args.sources_cmd=='enable':
+                x=enable_source(args.source_id)
+                if args.json: print(json.dumps(x,indent=2,default=str))
+                else: print(f"Enabled {args.source_id}. Evidence chunks: {x['evidence_chunks']}")
+            elif args.sources_cmd=='disable':
+                x=disable_source(args.source_id)
+                if args.json: print(json.dumps(x,indent=2,default=str))
+                else: print(f"Disabled {args.source_id}. Evidence remains local but is excluded from retrieval.")
+            elif args.sources_cmd=='conflicts':
+                x=source_conflicts()
+                if args.json: print(json.dumps(x,indent=2))
+                elif not x: print('No same-named structured-record overlaps among enabled sources.')
+                else:
+                    for item in x: print(f"{item['content_type']}: {item['name']} -> {', '.join(item['source_ids'])}")
         elif args.cmd=='doctor':
             srcinfo=verify_source()
             print('Source: OK',srcinfo['sha256'])

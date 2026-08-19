@@ -2,7 +2,7 @@ from __future__ import annotations
 import sqlite3
 from .config import settings
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;

@@ -1,4 +1,4 @@
-# Archie Agent Contract — v2.0.0-alpha.3
+# Archie Agent Contract — v2.0.0-alpha.4
 
 ## Purpose
 

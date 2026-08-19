@@ -109,16 +109,18 @@ def _fetch_fts(c, query: str, limit: int):
       FROM evidence_fts
       JOIN evidence_chunks c ON c.id=evidence_fts.rowid
       JOIN sources s ON s.id=c.source_id
-      WHERE evidence_fts MATCH ? AND s.enabled=1
+      WHERE evidence_fts MATCH ? AND s.enabled=1 AND s.approved=1 AND s.license_status='present'
+        AND (s.edition IS NULL OR s.edition=?)
       ORDER BY rank LIMIT ?
-    ''',(query,limit)).fetchall()
+    ''',(query,settings.active_edition,limit)).fetchall()
 
 def _score_row(row, plan: QueryPlan, matched_by: str) -> float:
     text=row['text'].lower(); heading=row['heading']
     score=max(0.0, -float(row['rank']))
-    # Authority priority is deliberately a tiny tie-breaker in alpha.1; with one
-    # enabled source it cannot alter v1.6 ordering, but the metadata path is live.
-    score += float(row['priority']) / 100000.0
+    # Alpha.4 authority precedence: higher-priority approved sources receive a modest
+    # deterministic boost. This prefers the official PDF when equivalent evidence
+    # exists, without suppressing supplemental evidence when the PDF has no match.
+    score += max(0.0, float(row['priority']) - 70.0) / 20.0
     for term in plan.terms:
         if term in text:
             score += min(1.2, text.count(term)*0.15)
@@ -195,8 +197,9 @@ def search(query: str, top_k: int|None=None, *, expand_neighbors: bool=True) -> 
             for rid in primary_ids[:min(3,len(primary_ids))]:
                 rows=c.execute('''SELECT c.id,c.evidence_id,c.source_id,c.page_pdf,c.page_label,c.heading,c.text,s.authority_type,s.edition
                                   FROM evidence_chunks c JOIN sources s ON s.id=c.source_id
-                                  WHERE c.id BETWEEN ? AND ? AND s.enabled=1 ORDER BY c.id''',
-                               (max(1,rid-settings.neighbor_radius), rid+settings.neighbor_radius)).fetchall()
+                                  WHERE c.id BETWEEN ? AND ? AND s.enabled=1 AND s.approved=1 AND s.license_status='present'
+                                    AND (s.edition IS NULL OR s.edition=?) ORDER BY c.id''',
+                               (max(1,rid-settings.neighbor_radius), rid+settings.neighbor_radius,settings.active_edition)).fetchall()
                 for row in rows:
                     if row['id'] in seen: continue
                     evidence.append(Evidence(row['evidence_id'],row['page_pdf'],row['page_label'],row['heading'],row['text'],-999.0,row['source_id'],row['authority_type'],row['edition'],'context',[f'neighbor-of:{rid}']))
@@ -220,5 +223,6 @@ def evidence_packet(items: list[Evidence]) -> str:
     parts=[]
     for e in items:
         role='PRIMARY HIT' if e.origin=='primary' else 'ADJACENT CONTEXT'
-        parts.append(f"[{e.evidence_id}] PDF page {e.page_pdf} | {e.heading} | {role}\n{e.text}")
+        location=f'PDF page {e.page_pdf}' if e.page_pdf is not None else f'record {e.page_label or e.evidence_id}'
+        parts.append(f"[{e.evidence_id}] source={e.source_id} authority={e.authority_type} edition={e.edition or '-'} | {location} | {e.heading} | {role}\n{e.text}")
     return '\n\n---\n\n'.join(parts)

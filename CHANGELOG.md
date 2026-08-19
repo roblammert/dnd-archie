@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.0-alpha.4
+
+- added explicit `sources approve`, `sources enable`, and `sources disable` lifecycle
+- approval requires explicit license name and URL; import never auto-approves
+- enabling approved Open5e structured content materializes stable local evidence chunks
+- retrieval now requires enabled + approved + licensed source state and active-edition compatibility
+- official SRD receives deterministic precedence over approved supplemental sources
+- evidence packets are source/authority/edition-aware for generation and audit
+- added structured-source overlap reporting with `sources conflicts`
+- enabled Open5e evidence survives generated-index rebuild through snapshot rehydration
+- clarified snapshot-file SHA-256 vs canonical-content SHA-256
+- 78 deterministic tests pass
+
+
 ## 2.0.0-alpha.3 — Open5e Selective Import & Snapshot System
 
 - Added `archie sources import open5e srd-2024`; alpha.3 rejects all other Open5e document keys.

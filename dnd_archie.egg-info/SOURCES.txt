@@ -15,6 +15,7 @@ archie/prompts.py
 archie/retrieve.py
 archie/source.py
 archie/source_library.py
+archie/structured_evidence.py
 dnd_archie.egg-info/PKG-INFO
 dnd_archie.egg-info/SOURCES.txt
 dnd_archie.egg-info/dependency_links.txt
@@ -28,6 +29,7 @@ tests/test_epistemic_v16.py
 tests/test_index_binding.py
 tests/test_ingest_retrieve.py
 tests/test_llm_contract_v15.py
+tests/test_multisource_alpha4.py
 tests/test_open5e_discovery_alpha2.py
 tests/test_open5e_import_alpha3.py
 tests/test_premise_enforcement_v163.py
