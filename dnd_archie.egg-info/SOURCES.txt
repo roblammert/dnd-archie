@@ -13,6 +13,7 @@ archie/llm.py
 archie/prompts.py
 archie/retrieve.py
 archie/source.py
+archie/source_library.py
 dnd_archie.egg-info/PKG-INFO
 dnd_archie.egg-info/SOURCES.txt
 dnd_archie.egg-info/dependency_links.txt
@@ -33,3 +34,4 @@ tests/test_release_candidate_v164.py
 tests/test_reliability_v151.py
 tests/test_retrieval_v15.py
 tests/test_source.py
+tests/test_source_library_alpha1.py

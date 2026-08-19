@@ -1,25 +1,21 @@
-# dnd-archie v1.6.0-rc.1
+# Archie v2.0.0-alpha.1
 
-Final reliability release candidate from v1.6.0-dev.4.
+**Stage:** Source Library Foundation
 
-## Scope
+This alpha migrates the frozen v1.6 trust engine onto a generic local Source Library without adding any new D&D rules authority.
 
-No retrieval, evidence-authority, epistemic, permission, or player-feature changes are introduced. rc.1 changes only malformed auditor structured-output recovery and observability.
+## Included
 
-## Auditor repair
+- generic multi-source SQLite schema;
+- explicit source/version/authority/edition metadata;
+- SRD 5.2.1 registered as `srd521` / `official_srd` / `2024`;
+- preserved `SRD521-P...` evidence IDs;
+- new `archie sources list|show|verify` CLI;
+- rebuild-from-source index migration;
+- source metadata on retrieval results.
 
-The initial evidence audit uses the normal auditor. If and only if that response is malformed structured output, Archie performs one repair-specific re-audit using the same question, evidence, player-facing answer, premises, and claims. The compact repair contract explicitly lists the required premise and claim indexes and requires JSON only.
+## Intentionally excluded
 
-If the correction succeeds, provenance includes `Audit structured-output correction succeeded.` If the correction is also malformed, Archie fails closed as `PARTIAL` and provenance explicitly records that both attempts were malformed. Transport/server failures remain operational errors.
+Open5e, 2014 fallback, house-rule precedence, source conflict resolution, and all web application code.
 
-## Acceptance
-
-Run:
-
-```bash
-./scripts/release_check.sh
-./scripts/run_regression.sh
-./scripts/run_epistemic_regression.sh
-```
-
-The 38-question baseline and 7-question epistemic live suites are unchanged.
+The alpha.1 acceptance criterion is behavioral parity with the v1.6 trust engine while the storage/retrieval layer becomes source-aware.

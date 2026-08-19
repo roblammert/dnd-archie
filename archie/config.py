@@ -9,9 +9,14 @@ load_dotenv(ROOT / ".env", override=False)
 @dataclass(frozen=True)
 class Settings:
     root: Path = ROOT
-    source_pdf: Path = ROOT / "sources" / "SRD_CC_v5.2.1.pdf"
-    manifest: Path = ROOT / "sources" / "manifest.json"
-    database: Path = ROOT / "data" / "index" / "srd.sqlite3"
+    sources_dir: Path = ROOT / "sources"
+    source_id: str = "srd521"
+    source_dir: Path = ROOT / "sources" / "srd521"
+    source_manifest: Path = ROOT / "sources" / "srd521" / "source.yaml"
+    source_pdf: Path = ROOT / "sources" / "srd521" / "SRD_CC_v5.2.1.pdf"
+    # Compatibility alias retained for code/tests that previously referred to settings.manifest.
+    manifest: Path = ROOT / "sources" / "srd521" / "source.yaml"
+    database: Path = ROOT / "data" / "index" / "archie.sqlite3"
     characters: Path = ROOT / "data" / "characters"
     llm_base_url: str = os.getenv("ARCHIE_LLM_BASE_URL", "http://127.0.0.1:8080/v1")
     llm_model: str = os.getenv("ARCHIE_LLM_MODEL", "gemma4-12b-it-q4_k_m")

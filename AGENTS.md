@@ -1,36 +1,24 @@
-# Archie project instructions
+# Archie v2.0.0-alpha.1 — Agent Contract
 
-## Identity
+This repository is the first Archie v2.0 development alpha. It preserves the frozen v1.6 trust engine while introducing a generic local Source Library.
 
-This repository is **dnd-archie-v1.6.0-dev.1**, a player-facing D&D assistant named **Archie**.
+## Non-negotiable trust rules
 
-## Non-negotiable authority rule
+- Gemma pretrained D&D knowledge is never a rules authority.
+- Rules claims must be grounded in enabled, approved local evidence and pass the existing audit path.
+- Fail closed rather than guess.
+- Preserve source identity, authority type, edition, version, and evidence IDs end-to-end.
+- Do not silently mix editions or source authorities.
 
-`sources/SRD_CC_v5.2.1.pdf` is the sole authoritative source for D&D rules.
+## Alpha.1 scope
 
-The model's pretrained D&D knowledge is untrusted for factual rules claims. It may use general intelligence for explanation, pedagogy, language, question interpretation, formatting, analogies, and reasoning over retrieved evidence.
+- `srd521` is the only enabled source.
+- `srd521` authority type is `official_srd`; edition is `2024`.
+- Open5e is intentionally absent.
+- No web application code belongs in alpha.1.
+- No house-rule precedence, 2014 fallback, or source-conflict resolution belongs in alpha.1.
+- The SQLite index is generated data and may be rebuilt from source manifests/content.
 
-## Required behavior for rules questions
+## Architecture direction
 
-1. Retrieve SRD evidence before answering.
-2. Prefer `python -m archie.cli ask "<question>"` for rules answers.
-3. Never answer a D&D rules claim from memory when retrieval is unavailable or insufficient.
-4. Preserve the answer engine's status: `VERIFIED`, `DERIVED`, `PARTIAL`, or `NOT_IN_SRD`.
-5. Never invent page numbers, section names, quotations, or evidence IDs.
-6. Never treat `NOT_IN_SRD` as proof something does not exist in D&D.
-7. Character files supply character facts only and never modify SRD rules.
-8. Do not browse the web for a rules answer. The local SRD is the authority.
-9. For retrieval failures, use `python -m archie.cli diagnose-retrieval "<question>"` before changing prompts.
-
-## Audience
-
-Default to a clear player-facing explanation suitable for a beginner. Use short examples and define jargon when helpful without sounding childish.
-
-## Repository safety
-
-- Do not modify `sources/SRD_CC_v5.2.1.pdf`.
-- Do not change `sources/manifest.json` except during an explicit source-version migration.
-- Do not silently add additional rulebooks or web sources.
-- Run `python -m pytest` after code changes.
-- Run `python -m archie.cli verify-source` before trusting an index.
-- Retrieval aliases are query aids only; they never establish rules.
+CLI and future web interfaces must call the same Archie core services. Do not put rules, retrieval, or authority logic into presentation layers.

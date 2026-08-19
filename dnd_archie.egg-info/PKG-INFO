@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: dnd-archie
-Version: 1.6.0rc1
-Summary: Local evidence-gated D&D SRD 5.2.1 player assistant
+Version: 2.0.0a1
+Summary: Local evidence-gated D&D player assistant with a multi-source library foundation
 Requires-Python: >=3.11
 License-File: LICENSE
 Requires-Dist: PyMuPDF<2,>=1.24

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0-alpha.1 — Source Library Foundation
+
+- Generalized the SQLite corpus into `sources`, `source_versions`, `content_records`, `evidence_chunks`, and FTS.
+- Registered SRD 5.2.1 as source `srd521` with explicit `official_srd` authority and `2024` edition metadata.
+- Preserved existing SRD evidence IDs and v1.6 trust behavior.
+- Added source metadata to every retrieved `Evidence` object.
+- Added `archie sources list`, `archie sources show`, and `archie sources verify`.
+- Moved the pinned SRD manifest to `sources/srd521/source.yaml`.
+- Index ingestion now rebuilds generated SQLite storage from scratch under the current schema.
+- No Open5e integration or web code is included in this alpha.
+
 ## 1.6.0rc1 — Auditor repair observability release candidate
 
 - Replaced the dev.4 audit retry with a compact repair-specific system contract.
@@ -96,3 +107,14 @@ Reliability and retrieval release based on the v1.1 live regression run.
 ## 1.0.0 — 2026-08-19
 
 Initial release: pinned SRD 5.2.1 authority, page-aware ingestion, SQLite FTS5 retrieval, evidence-bound local-LLM answers, strict claim audit, character YAML storage, Pi project skills, and regression tests.
+
+## 2.0.0-alpha.1 — Source Library Foundation
+
+- Generalized the SQLite corpus into `sources`, `source_versions`, `content_records`, `evidence_chunks`, and FTS.
+- Registered SRD 5.2.1 as source `srd521` with explicit `official_srd` authority and `2024` edition metadata.
+- Preserved existing SRD evidence IDs and v1.6 trust behavior.
+- Added source metadata to every retrieved `Evidence` object.
+- Added `archie sources list`, `archie sources show`, and `archie sources verify`.
+- Moved the pinned SRD manifest to `sources/srd521/source.yaml`.
+- Index ingestion now rebuilds generated SQLite storage from scratch under the current schema.
+- No Open5e integration or web code is included in this alpha.

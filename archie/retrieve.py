@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass, asdict, field
 from .db import connect
 from .config import settings
-from .source import verify_source, load_manifest
+from .source import verify_source, get_source_manifest
 from .concepts import CONCEPTS, ALIASES
 
 STOPWORDS = {
@@ -17,11 +17,14 @@ STOPWORDS = {
 @dataclass
 class Evidence:
     evidence_id: str
-    page_pdf: int
-    page_label: str
+    page_pdf: int | None
+    page_label: str | None
     heading: str
     text: str
     score: float
+    source_id: str = 'srd521'
+    authority_type: str = 'official_srd'
+    edition: str | None = '2024'
     origin: str = 'primary'
     matched_by: list[str] = field(default_factory=list)
     def to_dict(self):
@@ -100,16 +103,22 @@ def _fts_or(terms: list[str]) -> str:
 def _fetch_fts(c, query: str, limit: int):
     if not query: return []
     return c.execute('''
-      SELECT c.id,c.evidence_id,c.page_pdf,c.page_label,c.heading,c.text,
-             bm25(chunks_fts, 0.0, 3.0, 1.0) AS rank
-      FROM chunks_fts JOIN chunks c ON c.id=chunks_fts.rowid
-      WHERE chunks_fts MATCH ?
+      SELECT c.id,c.evidence_id,c.source_id,c.page_pdf,c.page_label,c.heading,c.text,
+             s.authority_type,s.edition,s.priority,
+             bm25(evidence_fts, 0.0, 3.0, 1.0) AS rank
+      FROM evidence_fts
+      JOIN evidence_chunks c ON c.id=evidence_fts.rowid
+      JOIN sources s ON s.id=c.source_id
+      WHERE evidence_fts MATCH ? AND s.enabled=1
       ORDER BY rank LIMIT ?
     ''',(query,limit)).fetchall()
 
 def _score_row(row, plan: QueryPlan, matched_by: str) -> float:
     text=row['text'].lower(); heading=row['heading']
     score=max(0.0, -float(row['rank']))
+    # Authority priority is deliberately a tiny tie-breaker in alpha.1; with one
+    # enabled source it cannot alter v1.6 ordering, but the metadata path is live.
+    score += float(row['priority']) / 100000.0
     for term in plan.terms:
         if term in text:
             score += min(1.2, text.count(term)*0.15)
@@ -132,8 +141,9 @@ def _score_row(row, plan: QueryPlan, matched_by: str) -> float:
 
 def _verify_index(c):
     meta=dict(c.execute('SELECT key,value FROM metadata').fetchall())
-    expected=load_manifest()['sha256']
-    if meta.get('source_sha256') != expected:
+    manifest=get_source_manifest(settings.source_id)
+    expected=manifest.sha256
+    if meta.get('source_sha256') != expected or meta.get('source_id') != manifest.id:
         raise RuntimeError('SRD index does not match the approved source. Run: python -m archie.cli ingest')
 
 def search(query: str, top_k: int|None=None, *, expand_neighbors: bool=True) -> list[Evidence]:
@@ -178,17 +188,18 @@ def search(query: str, top_k: int|None=None, *, expand_neighbors: bool=True) -> 
         seen=set()
         primary_ids=[]
         for row,score,matched in selected:
-            ev=Evidence(row['evidence_id'],row['page_pdf'],row['page_label'],row['heading'],row['text'],score,'primary',matched)
+            ev=Evidence(row['evidence_id'],row['page_pdf'],row['page_label'],row['heading'],row['text'],score,row['source_id'],row['authority_type'],row['edition'],'primary',matched)
             evidence.append(ev); seen.add(row['id']); primary_ids.append(row['id'])
         if expand_neighbors and settings.neighbor_radius>0:
             # Expand only around the strongest few hits to preserve context without flooding the packet.
             for rid in primary_ids[:min(3,len(primary_ids))]:
-                rows=c.execute('''SELECT id,evidence_id,page_pdf,page_label,heading,text FROM chunks
-                                  WHERE id BETWEEN ? AND ? ORDER BY id''',
+                rows=c.execute('''SELECT c.id,c.evidence_id,c.source_id,c.page_pdf,c.page_label,c.heading,c.text,s.authority_type,s.edition
+                                  FROM evidence_chunks c JOIN sources s ON s.id=c.source_id
+                                  WHERE c.id BETWEEN ? AND ? AND s.enabled=1 ORDER BY c.id''',
                                (max(1,rid-settings.neighbor_radius), rid+settings.neighbor_radius)).fetchall()
                 for row in rows:
                     if row['id'] in seen: continue
-                    evidence.append(Evidence(row['evidence_id'],row['page_pdf'],row['page_label'],row['heading'],row['text'],-999.0,'context',[f'neighbor-of:{rid}']))
+                    evidence.append(Evidence(row['evidence_id'],row['page_pdf'],row['page_label'],row['heading'],row['text'],-999.0,row['source_id'],row['authority_type'],row['edition'],'context',[f'neighbor-of:{rid}']))
                     seen.add(row['id'])
         return evidence
     finally:

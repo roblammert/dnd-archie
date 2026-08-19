@@ -1,45 +1,36 @@
 from __future__ import annotations
 import re, json
+from datetime import datetime, timezone
 import pymupdf
 from .config import settings
-from .db import connect, initialize
-from .source import verify_source, load_manifest
+from .db import rebuild_database, SCHEMA_VERSION
+from .source import verify_source, get_source_manifest
 
 MAX_CHARS=1800
 OVERLAP_PARAGRAPHS=1
 
-# Page labels in the SRD largely track printed page numbers; PDF page count can include front matter.
+def _now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
 def clean_page_text(raw: str) -> str:
     raw=raw.replace('\u00ad','').replace('\r','\n')
     lines=[]
     for line in raw.splitlines():
         line=re.sub(r'\s+',' ',line).strip()
         if not line: lines.append(''); continue
-        # Drop isolated page-number/footer artifacts but preserve numeric rules text.
         if re.fullmatch(r'\d{1,3}', line): continue
         lines.append(line)
     text='\n'.join(lines)
-    # Rejoin words hyphenated only because of PDF line wrapping.
     text=re.sub(r'([A-Za-z])-[\n ]+([a-z])', r'\1\2', text)
     text=re.sub(r'\n{3,}','\n\n',text)
     return text.strip()
 
 def section_for_page(page: int) -> str:
-    # Top-level section boundaries are taken from the SRD 5.2.1 table of contents.
     sections=[
-      (1, "Legal / Contents"),
-      (5, "Playing the Game"),
-      (19, "Character Creation"),
-      (28, "Classes"),
-      (83, "Character Origins"),
-      (87, "Feats"),
-      (89, "Equipment"),
-      (104, "Spells"),
-      (176, "Rules Glossary"),
-      (192, "Gameplay Toolbox"),
-      (204, "Magic Items"),
-      (254, "Monsters"),
-      (343, "Animals"),
+      (1, "Legal / Contents"),(5, "Playing the Game"),(19, "Character Creation"),
+      (28, "Classes"),(83, "Character Origins"),(87, "Feats"),(89, "Equipment"),
+      (104, "Spells"),(176, "Rules Glossary"),(192, "Gameplay Toolbox"),
+      (204, "Magic Items"),(254, "Monsters"),(343, "Animals"),
     ]
     current=sections[0][1]
     for start,name in sections:
@@ -56,7 +47,6 @@ def split_page(text: str):
             chunks.append('\n\n'.join(cur))
             cur=cur[-OVERLAP_PARAGRAPHS:] if OVERLAP_PARAGRAPHS else []
             size=sum(len(x)+2 for x in cur)
-        # If a giant paragraph slipped through, split on sentence-ish boundaries.
         if len(p)>MAX_CHARS:
             bits=re.split(r'(?<=[.!?])\s+(?=[A-Z0-9])',p)
             for b in bits:
@@ -69,29 +59,48 @@ def split_page(text: str):
     return [c.strip() for c in chunks if c.strip()]
 
 def ingest() -> dict:
-    integrity=verify_source(); manifest=load_manifest()
-    doc=pymupdf.open(settings.source_pdf)
-    c=connect(); initialize(c)
+    integrity=verify_source()
+    manifest=get_source_manifest(settings.source_id)
+    doc=pymupdf.open(manifest.content_path)
+    c=rebuild_database()
+    now=_now()
     with c:
-        c.execute('DELETE FROM chunks')
-        c.execute('DELETE FROM metadata')
-        total=0
+        c.execute('''INSERT INTO sources(id,name,source_type,authority_type,edition,enabled,priority,
+                     license_name,license_url,homepage_url,created_at,updated_at)
+                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+                  (manifest.id,manifest.name,manifest.source_type,manifest.authority_type,manifest.edition,
+                   1 if manifest.enabled else 0,manifest.priority,manifest.license_name,manifest.license_url,
+                   manifest.homepage_url,now,now))
+        cur=c.execute('''INSERT INTO source_versions(source_id,version,imported_at,content_sha256,source_uri,filename,active)
+                         VALUES(?,?,?,?,?,?,1)''',
+                      (manifest.id,manifest.version,now,integrity['sha256'],manifest.source_uri,manifest.filename))
+        source_version_id=cur.lastrowid
+        total=0; records=0
         for pno,page in enumerate(doc, start=1):
             txt=clean_page_text(page.get_text('text'))
             if not txt: continue
             heading=section_for_page(pno)
+            structured=json.dumps({'page_pdf':pno,'page_label':str(pno),'section':heading},sort_keys=True)
+            cur=c.execute('''INSERT INTO content_records(source_id,source_version_id,external_id,content_type,name,edition,structured_json,created_at)
+                             VALUES(?,?,?,?,?,?,?,?)''',
+                          (manifest.id,source_version_id,f'page:{pno}','page',f'PDF page {pno}',manifest.edition,structured,now))
+            record_id=cur.lastrowid; records+=1
             for n,chunk in enumerate(split_page(txt),start=1):
                 eid=f"SRD521-P{pno:03d}-C{n:02d}"
-                c.execute('INSERT INTO chunks(evidence_id,page_pdf,page_label,heading,text) VALUES(?,?,?,?,?)',
-                          (eid,pno,str(pno),heading,chunk))
+                c.execute('''INSERT INTO evidence_chunks(evidence_id,source_id,source_version_id,content_record_id,page_pdf,page_label,heading,text)
+                             VALUES(?,?,?,?,?,?,?,?)''',
+                          (eid,manifest.id,source_version_id,record_id,pno,str(pno),heading,chunk))
                 total+=1
         meta={
-          'authority_id':manifest['authority_id'],
+          'authority_id':manifest.id,
+          'source_id':manifest.id,
           'source_sha256':integrity['sha256'],
-          'source_filename':manifest['filename'],
+          'source_filename':manifest.filename,
+          'source_version':manifest.version,
           'pages':str(len(doc)),
+          'content_records':str(records),
           'chunks':str(total),
-          'schema_version':'1'
+          'schema_version':SCHEMA_VERSION,
         }
         c.executemany('INSERT INTO metadata(key,value) VALUES(?,?)',meta.items())
     c.close(); doc.close()
