@@ -1,14 +1,18 @@
 ---
 name: archie-search
-description: Searches and displays exact local SRD 5.2.1 evidence without generating a rules answer. Use when the user asks where a rule is located, wants source text located, or when inspecting retrieval quality.
+description: Searches and diagnoses exact local SRD 5.2.1 evidence without using pretrained D&D knowledge. Use when locating a rule or inspecting retrieval quality.
 ---
-
 
 # Archie SRD Search
 
-Run:
+For ordinary source lookup:
 ```bash
 python -m archie.cli search "<query>"
 ```
 
-Summarize only what the returned evidence establishes. Preserve evidence IDs and PDF page references. Do not browse the web.
+For retrieval debugging:
+```bash
+python -m archie.cli diagnose-retrieval "<question>"
+```
+
+Summarize only what returned SRD evidence establishes. Preserve evidence IDs and PDF page references. Do not browse the web for rules answers.

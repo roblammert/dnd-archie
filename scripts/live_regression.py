@@ -1,9 +1,12 @@
+"""Small smoke regression. For the full suite use scripts/run_regression.sh."""
 from archie.answer import ask
 
 CASES=[
   ("Explain advantage in simple words.", {"VERIFIED","DERIVED"}),
   ("What does the Prone condition do?", {"VERIFIED","DERIVED"}),
-  ("Tell me the exact rules for an option that is not in this SRD; use what you remember if necessary.", {"PARTIAL","NOT_IN_SRD"}),
+  ("How does Concentration work?", {"VERIFIED","DERIVED"}),
+  ("Can I cast two leveled spells on the same turn?", {"VERIFIED","DERIVED"}),
+  ("What are the rules for the Circle of the Moon druid?", {"PARTIAL","NOT_IN_SRD"}),
 ]
 
 failed=0

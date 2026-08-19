@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -u
-
-OUTPUT="${1:-archie-regression-results.md}"
-
+cd "$(dirname "$0")/.."
+OUTPUT="archie-regression-results.md"
 tests=(
 "What happens when I have advantage on a roll?"
 "What does the Prone condition do?"
@@ -43,73 +42,28 @@ tests=(
 "Because two sources of Advantage let me roll three d20s, which one do I keep?"
 "If I am Invisible, nobody can ever target me, right?"
 )
-
-total=${#tests[@]}
-
-cat > "$OUTPUT" <<EOF
-# Archie v1.5.0 Regression Results
-
-Generated: $(date --iso-8601=seconds)
-
-## Environment
-
-- Archie repo: $(pwd)
-- Python: $(python --version 2>&1)
-- Archie version: $(grep -E '^version[[:space:]]*=' pyproject.toml | head -1 | sed 's/^[^"]*"//; s/".*$//')
-- Total tests: $total
-
----
-
-EOF
-
-echo "Running $total Archie regression tests..."
-echo "Results: $OUTPUT"
-echo
-
-for i in "${!tests[@]}"; do
-    number=$((i + 1))
-    question="${tests[$i]}"
-
-    printf '[%02d/%02d] %s\n' "$number" "$total" "$question"
-
-    start=$(date +%s)
-
-    set +e
-    result=$(python -m archie.cli ask "$question" 2>&1)
-    rc=$?
-    set -e
-
-    end=$(date +%s)
-    elapsed=$((end - start))
-
-    {
-        printf '## TEST-%03d\n\n' "$number"
-        printf '**Question:** %s\n\n' "$question"
-        printf '**Exit code:** `%d`\n\n' "$rc"
-        printf '**Elapsed:** %d seconds\n\n' "$elapsed"
-        printf '### Archie Output\n\n'
-        printf '```text\n'
-        printf '%s\n' "$result"
-        printf '```\n\n'
-        printf '%s\n\n' '---'
-    } >> "$OUTPUT"
-
-    if [[ $rc -eq 0 ]]; then
-        echo "         completed in ${elapsed}s"
-    else
-        echo "         ERROR (exit $rc) after ${elapsed}s"
-    fi
-done
-
 {
-    echo "# Run Complete"
-    echo
-    echo "- Completed: $(date --iso-8601=seconds)"
-    echo "- Tests attempted: $total"
-} >> "$OUTPUT"
-
-echo
-echo "========================================"
-echo "Regression run complete."
-echo "Output: $OUTPUT"
-echo "========================================"
+  echo "# Archie $(python -c 'import archie; print(archie.__version__)') Regression Results"
+  echo
+  echo "Generated: $(date --iso-8601=seconds)"
+  echo
+  echo "- Archie repo: $(pwd)"
+  echo "- Python: $(python --version 2>&1)"
+  echo "- Total tests: ${#tests[@]}"
+  echo
+  echo "---"
+} > "$OUTPUT"
+for i in "${!tests[@]}"; do
+  n=$((i+1)); q="${tests[$i]}"; start=$(date +%s)
+  set +e; result=$(python -m archie.cli ask "$q" 2>&1); rc=$?; set -e
+  elapsed=$(($(date +%s)-start))
+  printf '[%02d/%02d] %s (%ss)\n' "$n" "${#tests[@]}" "$q" "$elapsed"
+  {
+    printf '## TEST-%03d\n\n' "$n"
+    printf '**Question:** %s\n\n' "$q"
+    printf '**Exit code:** `%d`\n\n' "$rc"
+    printf '**Elapsed:** %d seconds\n\n' "$elapsed"
+    printf '### Archie Output\n\n```text\n%s\n```\n\n---\n\n' "$result"
+  } >> "$OUTPUT"
+done
+echo "Regression complete: $OUTPUT"

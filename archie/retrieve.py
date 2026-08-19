@@ -1,13 +1,18 @@
 from __future__ import annotations
-
 import re
-from dataclasses import asdict, dataclass
-from typing import Iterable
-
-from .config import settings
+from dataclasses import dataclass, asdict, field
 from .db import connect
-from .source import load_manifest, verify_source
+from .config import settings
+from .source import verify_source, load_manifest
+from .concepts import CONCEPTS, ALIASES
 
+STOPWORDS = {
+    'a','an','and','are','as','at','be','been','being','but','by','can','could','did','do','does',
+    'for','from','had','has','have','how','i','if','in','into','is','it','me','my','of','on','or',
+    'that','the','their','them','then','there','these','they','this','those','to','was','were','what',
+    'when','where','which','who','why','will','with','would','you','your','happen','happens','happened',
+    'right','work','works','working','thing','things','specific','rules','rule'
+}
 
 @dataclass
 class Evidence:
@@ -17,243 +22,192 @@ class Evidence:
     heading: str
     text: str
     score: float
-    role: str = "primary"
-
+    origin: str = 'primary'
+    matched_by: list[str] = field(default_factory=list)
     def to_dict(self):
         return asdict(self)
 
+@dataclass
+class QueryPlan:
+    original: str
+    terms: list[str]
+    concepts: list[str]
+    aliases: list[str]
+    subqueries: list[str]
+    def to_dict(self):
+        return asdict(self)
 
-@dataclass(frozen=True)
-class Concept:
-    key: str
-    triggers: tuple[str, ...]
-    queries: tuple[str, ...]
-    markers: tuple[str, ...] = ()
-    preferred_sections: tuple[str, ...] = ()
+def _tokens(q: str) -> list[str]:
+    return re.findall(r"[A-Za-z0-9']+", q.lower())
 
+def _find_aliases(q: str) -> list[str]:
+    lower = q.lower()
+    found=[]
+    for alias, expansions in ALIASES.items():
+        if alias in lower:
+            found.extend(expansions)
+    return list(dict.fromkeys(found))
 
-STOPWORDS = {
-    "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by",
-    "can", "could", "did", "do", "does", "for", "from", "had", "has", "have",
-    "how", "i", "if", "in", "into", "is", "it", "me", "my", "of", "on", "or",
-    "that", "the", "their", "them", "then", "there", "these", "they", "this",
-    "those", "to", "was", "were", "what", "when", "where", "which", "who", "why",
-    "will", "with", "would", "you", "your", "happen", "happens", "happened",
-}
-
-# These aliases interpret player language only. They are retrieval hints, never rules authority.
-ALIASES = {
-    "armor number": "armor class",
-    "armour number": "armor class",
-    "defense number": "armor class",
-    "defence number": "armor class",
-    "sneak past": "hide stealth",
-    "sneaking past": "hide stealth",
-    "sneak by": "hide stealth",
-    "spell dc": "spell save dc",
-    "passive perc": "passive perception",
-}
-
-CONCEPTS: tuple[Concept, ...] = (
-    Concept("advantage", ("advantage",), ("advantage", "roll two d20s"), ("Advantage/Disadvantage", "Advantage ["), ("Playing the Game", "Rules Glossary")),
-    Concept("prone", ("prone",), ("prone condition", "prone"), ("Prone [Condition]",), ("Rules Glossary",)),
-    Concept("restrained", ("restrained",), ("restrained condition", "restrained"), ("Restrained [Condition]",), ("Rules Glossary",)),
-    Concept("invisible", ("invisible", "invisibility"), ("invisible condition", "invisible"), ("Invisible [Condition]",), ("Rules Glossary",)),
-    Concept("grappled", ("grappled", "grapple"), ("grappled condition", "grappled"), ("Grappled [Condition]",), ("Rules Glossary",)),
-    Concept("concentration", ("concentration", "concentrate"), ("concentration",), ("Concentration Some spells",), ("Rules Glossary",)),
-    Concept("help", ("help action", "take the help", "help another", "help"), ("help action",), ("Help [Action]",), ("Rules Glossary",)),
-    Concept("saving_throw", ("saving throw", "save"), ("saving throw",), ("Saving Throws", "Save Save is another name"), ("Playing the Game", "Rules Glossary")),
-    Concept("ability_check", ("ability check", "ability checks"), ("ability check",), ("Ability Checks",), ("Playing the Game",)),
-    Concept("armor_class", ("armor class", "armour class", "ac", "armor number", "armour number", "defense number", "defence number"), ("armor class",), ("Armor Class A creature’s Armor Class represents", "Armor Class represents how well"), ("Playing the Game", "Rules Glossary")),
-    Concept("passive_perception", ("passive perception", "passive perc"), ("passive perception",), ("Passive Perception",), ("Character Creation", "Rules Glossary")),
-    Concept("spell_save_dc", ("spell save dc", "spell dc", "save dc"), ("spell save dc",), ("Spell save DC =", "calculate the DC for your spells"), ("Character Creation", "Spells")),
-    Concept("hide", ("hide action", "hide", "stealth", "sneak", "sneaking"), ("hide action", "dexterity stealth"), ("Hide [Action]",), ("Rules Glossary",)),
-    Concept("movement", ("move before", "move after", "movement", "break up", "between attacks"), ("breaking up your move", "move on your turn"), ("Breaking Up Your Move",), ("Playing the Game", "Rules Glossary")),
-    Concept("jump", ("jump", "long jump", "high jump"), ("long jump", "high jump"), ("Long Jump", "High Jump"), ("Rules Glossary",)),
-    Concept("spell_per_turn", ("two leveled spells", "two levelled spells", "two spells", "leveled spell", "levelled spell", "spell slot on the same turn"), ("one spell with a spell slot", "spell slot per turn"), (), ("Playing the Game", "Rules Glossary")),
-)
-
-
-def _normalized(q: str) -> str:
-    s = q.lower().replace("’", "'")
-    for src, dst in ALIASES.items():
-        s = s.replace(src, dst)
-    return re.sub(r"\s+", " ", s).strip()
-
-
-def _terms(q: str) -> list[str]:
-    raw = re.findall(r"[A-Za-z0-9']+", _normalized(q))
-    useful = [t for t in raw if len(t) > 1 and t not in STOPWORDS]
-    if not useful:
-        useful = raw
-    return list(dict.fromkeys(useful))
-
-
-def _quote(term: str) -> str:
-    return f'"{term.replace(chr(34), chr(34) * 2)}"'
-
-
-def _fts_query(q: str) -> str:
-    return " OR ".join(_quote(t) for t in _terms(q)[:20])
-
-
-def _phrase_query(phrases: Iterable[str]) -> str:
-    clean = [p.strip().lower() for p in phrases if p.strip()]
-    return " OR ".join(_quote(p) for p in clean)
-
-
-def detect_concepts(query: str) -> list[Concept]:
-    q = _normalized(query)
-    found: list[Concept] = []
-    for concept in CONCEPTS:
-        if any(trigger in q for trigger in concept.triggers):
-            found.append(concept)
+def _find_concepts(q: str, alias_expansions: list[str]) -> list[str]:
+    lower = q.lower()
+    found=[]
+    for key in sorted(CONCEPTS, key=len, reverse=True):
+        if re.search(rf'\b{re.escape(key)}\b', lower):
+            found.append(key)
+    for expansion in alias_expansions:
+        if expansion in CONCEPTS and expansion not in found:
+            found.append(expansion)
+    # Comparison questions need both sides represented independently.
+    if 'saving throw' in lower and 'ability check' in lower:
+        for x in ('ability check','saving throw'):
+            if x not in found: found.append(x)
     return found
 
+def build_query_plan(q: str) -> QueryPlan:
+    aliases=_find_aliases(q)
+    lower=q.lower()
+    # Deterministic intent bridges for common natural-language phrasing.
+    if 'move' in lower and 'before' in lower and 'after' in lower and 'breaking up your move' not in aliases:
+        aliases.append('breaking up your move')
+    if ('leveled spell' in lower or 'levelled spell' in lower) and 'spell slot per turn' not in aliases:
+        aliases.append('spell slot per turn')
+    if 'natural 20' in lower and 'natural 20' not in aliases:
+        aliases.append('natural 20')
+    if 'natural 1' in lower and 'natural 1' not in aliases:
+        aliases.append('natural 1')
+    concepts=_find_concepts(q, aliases)
+    terms=[t for t in _tokens(q) if len(t)>1 and t not in STOPWORDS]
+    for expansion in aliases:
+        terms.extend(_tokens(expansion))
+    for concept in concepts:
+        terms.extend(_tokens(CONCEPTS[concept]['canonical']))
+    terms=list(dict.fromkeys(t for t in terms if t not in STOPWORDS))
+    if not terms:
+        terms=list(dict.fromkeys(_tokens(q)))
+    subqueries=[]
+    for concept in concepts:
+        subqueries.append(CONCEPTS[concept]['canonical'])
+    subqueries.extend(aliases)
+    subqueries=list(dict.fromkeys(subqueries))
+    return QueryPlan(q, terms[:24], concepts, aliases, subqueries)
 
-def _open_verified_db():
+def _escape(term: str) -> str:
+    return term.replace('"','""')
+
+def _fts_or(terms: list[str]) -> str:
+    return ' OR '.join(f'"{_escape(t)}"' for t in terms if t)
+
+def _fetch_fts(c, query: str, limit: int):
+    if not query: return []
+    return c.execute('''
+      SELECT c.id,c.evidence_id,c.page_pdf,c.page_label,c.heading,c.text,
+             bm25(chunks_fts, 0.0, 3.0, 1.0) AS rank
+      FROM chunks_fts JOIN chunks c ON c.id=chunks_fts.rowid
+      WHERE chunks_fts MATCH ?
+      ORDER BY rank LIMIT ?
+    ''',(query,limit)).fetchall()
+
+def _score_row(row, plan: QueryPlan, matched_by: str) -> float:
+    text=row['text'].lower(); heading=row['heading']
+    score=max(0.0, -float(row['rank']))
+    for term in plan.terms:
+        if term in text:
+            score += min(1.2, text.count(term)*0.15)
+    for concept in plan.concepts:
+        meta=CONCEPTS[concept]
+        canonical=meta['canonical'].lower()
+        if canonical in text:
+            score += 4.0
+        marker=meta.get('marker')
+        if marker and marker.lower() in text:
+            score += 12.0
+        if heading in meta.get('sections',()):
+            score += 4.0
+        # Glossary-like definition starts are especially authoritative for named concepts.
+        if re.search(rf'\b{re.escape(canonical)}\b(?:\s*\[[^\]]+\])?', text):
+            score += 1.5
+    if matched_by.startswith('exact:'):
+        score += 5.0
+    return score
+
+def _verify_index(c):
+    meta=dict(c.execute('SELECT key,value FROM metadata').fetchall())
+    expected=load_manifest()['sha256']
+    if meta.get('source_sha256') != expected:
+        raise RuntimeError('SRD index does not match the approved source. Run: python -m archie.cli ingest')
+
+def search(query: str, top_k: int|None=None, *, expand_neighbors: bool=True) -> list[Evidence]:
     verify_source()
     if not settings.database.exists():
-        raise RuntimeError("SRD index not found. Run: python -m archie.cli ingest")
-    c = connect()
-    meta = dict(c.execute("SELECT key,value FROM metadata").fetchall())
-    expected = load_manifest()["sha256"]
-    if meta.get("source_sha256") != expected:
-        c.close()
-        raise RuntimeError("SRD index does not match the approved source. Run: python -m archie.cli ingest")
-    return c
-
-
-def _raw_search(c, iq: str, limit: int = 24):
-    if not iq:
-        return []
-    return c.execute(
-        """
-        SELECT c.id,c.evidence_id,c.page_pdf,c.page_label,c.heading,c.text,
-               bm25(chunks_fts, 0.0, 3.0, 1.0) AS rank
-        FROM chunks_fts JOIN chunks c ON c.id=chunks_fts.rowid
-        WHERE chunks_fts MATCH ?
-        ORDER BY rank LIMIT ?
-        """,
-        (iq, limit),
-    ).fetchall()
-
-
-def _row_to_evidence(row, role: str = "primary", score_adjust: float = 0.0) -> Evidence:
-    return Evidence(
-        row["evidence_id"], row["page_pdf"], row["page_label"], row["heading"],
-        row["text"], float(row["rank"]) + score_adjust, role,
-    )
-
-
-def _concept_priority(row, concept: Concept) -> tuple:
-    text = row["text"]
-    lower = text.lower()
-    marker_positions = [lower.find(m.lower()) for m in concept.markers if m.lower() in lower]
-    marker_pos = min(marker_positions) if marker_positions else 10**9
-    marker_hit = 0 if marker_positions else 1
-    section_hit = 0 if any(s.lower() == row["heading"].lower() for s in concept.preferred_sections) else 1
-    # Definition markers and canonical sections outrank raw BM25 for concept lookups.
-    return (marker_hit, section_hit, marker_pos, float(row["rank"]))
-
-
-def _best_for_concept(c, concept: Concept):
-    rows = _raw_search(c, _phrase_query(concept.queries), 32)
-    if not rows:
-        return None
-    return min(rows, key=lambda r: _concept_priority(r, concept))
-
-
-def _neighbors(c, rowid: int):
-    return c.execute(
-        """
-        SELECT id,evidence_id,page_pdf,page_label,heading,text,0.0 AS rank
-        FROM chunks
-        WHERE id IN (?, ?)
-        ORDER BY id
-        """,
-        (rowid - 1, rowid + 1),
-    ).fetchall()
-
-
-def search(query: str, top_k: int | None = None) -> list[Evidence]:
-    """Deterministic Retrieval v2.
-
-    1. Detect canonical SRD concepts from the player's wording.
-    2. Guarantee a definition-shaped candidate for each detected concept when available.
-    3. Fill remaining primary slots with normalized BM25 retrieval.
-    4. Add document-order neighbors around the strongest primary hits, including page breaks.
-    """
-    limit = top_k or settings.top_k
-    if limit <= 0:
-        return []
-
-    c = _open_verified_db()
+        raise RuntimeError('SRD index not found. Run: python -m archie.cli ingest')
+    plan=build_query_plan(query)
+    final_k=top_k or settings.top_k
+    candidate_k=max(settings.retrieval_candidate_k, final_k*5)
+    c=connect()
     try:
-        concepts = detect_concepts(query)
-        selected: list[tuple[object, str]] = []
-        seen: set[str] = set()
-
-        # Multi-concept decomposition: reserve at least one strong hit per concept.
-        for concept in concepts:
-            row = _best_for_concept(c, concept)
-            if row is not None and row["evidence_id"] not in seen:
-                selected.append((row, "concept"))
-                seen.add(row["evidence_id"])
-
-        # General lexical recall still matters for names, spells, equipment, and unforeseen queries.
-        general_query = _fts_query(query)
-        for row in _raw_search(c, general_query, max(24, limit * 4)):
-            if row["evidence_id"] not in seen:
-                selected.append((row, "primary"))
-                seen.add(row["evidence_id"])
-            if len(selected) >= max(limit, 6):
-                break
-
-        if not selected:
-            return []
-
-        # Preserve all concept hits first. Then include top lexical hits.
-        primaries = selected[:limit]
-        out: list[Evidence] = [_row_to_evidence(row, role) for row, role in primaries]
-        out_seen = {e.evidence_id for e in out}
-
-        # Cross-page neighbor expansion. Use spare packet slots only; never evict a concept hit.
-        # Expanding the first 3 strong hits is enough to bridge most rule/page boundaries.
-        if len(out) < limit:
-            for row, _role in primaries[:3]:
-                for n in _neighbors(c, int(row["id"])):
-                    if n["evidence_id"] in out_seen:
-                        continue
-                    out.append(_row_to_evidence(n, "context", score_adjust=1000.0))
-                    out_seen.add(n["evidence_id"])
-                    if len(out) >= limit:
-                        break
-                if len(out) >= limit:
-                    break
-
-        return out[:limit]
+        _verify_index(c)
+        candidates={}
+        broad=_fts_or(plan.terms)
+        for row in _fetch_fts(c,broad,candidate_k):
+            candidates[row['id']]=(row,_score_row(row,plan,'broad'),['broad'])
+        for sub in plan.subqueries:
+            phrase='"'+_escape(sub.lower())+'"'
+            for row in _fetch_fts(c,phrase,candidate_k):
+                sc=_score_row(row,plan,f'exact:{sub}')
+                old=candidates.get(row['id'])
+                if old:
+                    candidates[row['id']] = (row,max(old[1],sc),list(dict.fromkeys(old[2]+[f'exact:{sub}'])))
+                else:
+                    candidates[row['id']] = (row,sc,[f'exact:{sub}'])
+        ranked_all=sorted(candidates.values(), key=lambda x:(-x[1], x[0]['id']))
+        # Reserve one strong exact hit for each detected concept. This prevents a
+        # comparison question from retrieving six excellent passages about one
+        # side while omitting the other side entirely.
+        selected=[]; selected_ids=set()
+        for sub in plan.subqueries:
+            tag=f'exact:{sub}'
+            exact=[x for x in ranked_all if tag in x[2] and x[0]['id'] not in selected_ids]
+            if exact and len(selected)<final_k:
+                selected.append(exact[0]); selected_ids.add(exact[0][0]['id'])
+        for item in ranked_all:
+            if len(selected)>=final_k: break
+            if item[0]['id'] in selected_ids: continue
+            selected.append(item); selected_ids.add(item[0]['id'])
+        selected.sort(key=lambda x:(-x[1], x[0]['id']))
+        evidence=[]
+        seen=set()
+        primary_ids=[]
+        for row,score,matched in selected:
+            ev=Evidence(row['evidence_id'],row['page_pdf'],row['page_label'],row['heading'],row['text'],score,'primary',matched)
+            evidence.append(ev); seen.add(row['id']); primary_ids.append(row['id'])
+        if expand_neighbors and settings.neighbor_radius>0:
+            # Expand only around the strongest few hits to preserve context without flooding the packet.
+            for rid in primary_ids[:min(3,len(primary_ids))]:
+                rows=c.execute('''SELECT id,evidence_id,page_pdf,page_label,heading,text FROM chunks
+                                  WHERE id BETWEEN ? AND ? ORDER BY id''',
+                               (max(1,rid-settings.neighbor_radius), rid+settings.neighbor_radius)).fetchall()
+                for row in rows:
+                    if row['id'] in seen: continue
+                    evidence.append(Evidence(row['evidence_id'],row['page_pdf'],row['page_label'],row['heading'],row['text'],-999.0,'context',[f'neighbor-of:{rid}']))
+                    seen.add(row['id'])
+        return evidence
     finally:
         c.close()
 
-
-def retrieval_debug(query: str, top_k: int | None = None) -> dict:
-    concepts = detect_concepts(query)
-    evidence = search(query, top_k)
+def diagnose(query: str, top_k: int|None=None) -> dict:
+    plan=build_query_plan(query)
+    items=search(query,top_k,expand_neighbors=True)
     return {
-        "query": query,
-        "normalized": _normalized(query),
-        "fts_query": _fts_query(query),
-        "concepts": [c.key for c in concepts],
-        "top_k": top_k or settings.top_k,
-        "evidence": [e.to_dict() for e in evidence],
+        'query': query,
+        'plan': plan.to_dict(),
+        'results': [x.to_dict() for x in items],
+        'primary_count': sum(1 for x in items if x.origin=='primary'),
+        'context_count': sum(1 for x in items if x.origin=='context'),
     }
 
-
 def evidence_packet(items: list[Evidence]) -> str:
-    parts = []
+    parts=[]
     for e in items:
-        parts.append(
-            f"[{e.evidence_id}] PDF page {e.page_pdf} | {e.heading} | retrieval={e.role}\n{e.text}"
-        )
-    return "\n\n---\n\n".join(parts)
+        role='PRIMARY HIT' if e.origin=='primary' else 'ADJACENT CONTEXT'
+        parts.append(f"[{e.evidence_id}] PDF page {e.page_pdf} | {e.heading} | {role}\n{e.text}")
+    return '\n\n---\n\n'.join(parts)

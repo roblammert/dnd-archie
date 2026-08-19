@@ -1,93 +1,120 @@
-# dnd-archie-v1.0.0
+# dnd-archie-v1.5.1
 
-**Archie** is a local, evidence-gated D&D player assistant built for Pi and an OpenAI-compatible local LLM server (tested by design against a Gemma-family chat model). Its sole authority for D&D rules is the bundled **Dungeons & Dragons SRD 5.2.1** PDF.
+**Archie** is a local, evidence-gated D&D player assistant for Pi and an OpenAI-compatible local LLM server. Its sole authority for D&D rules is the bundled **Dungeons & Dragons SRD 5.2.1** PDF.
 
-Archie is intentionally *not* an AI that pretends to forget everything it learned during pretraining. The model may use general intelligence for language, teaching, analogies, question interpretation, and reasoning. It may establish a D&D rule fact only from evidence retrieved from the approved SRD corpus.
+Archie does not pretend the model has forgotten D&D. Instead, it separates **authority** from **intelligence**: Gemma may explain, teach, interpret informal language, and reason, but every factual D&D rule must be supported by retrieved SRD evidence.
 
-## Trust contract
+## v1.5 reliability architecture
 
-- **SRD 5.2.1 is the only rules authority.**
-- Pretrained D&D knowledge is never authoritative.
-- Every rules answer must retrieve evidence first.
-- Every factual rules claim must cite one or more retrieved evidence IDs.
-- Evidence IDs are validated by code; invented citations cause the answer to fail closed.
-- A second evidence-only audit is enabled by default.
-- If evidence is insufficient, Archie says so instead of guessing.
-- Character YAML may supply player-specific facts, but cannot override rules.
-- Arithmetic and derivations are labeled `DERIVED`.
-- Content not present in SRD 5.2.1 is reported as `NOT_IN_SRD`, not as nonexistent in D&D.
-
-This architecture can make hallucination **very low and visible**, but no generative LLM should be advertised as mathematically incapable of hallucination.
+- SRD 5.2.1 is SHA-256 pinned and is the only rules authority.
+- SQLite FTS5 provides deterministic local retrieval.
+- Retrieval v2 performs stop-word cleanup, exact concept matching, definition/section boosting, multi-concept coverage, and cross-page neighbor expansion.
+- A small child-language alias layer maps phrases such as `armor number` to `Armor Class` for search only.
+- Every rules claim must cite retrieved evidence IDs.
+- Evidence IDs are validated in Python; invented citations fail closed.
+- The strict audit checks both the structured claims **and the player-facing answer**, preventing unsupported mechanics from escaping merely by being omitted from `claims[]`.
+- llama.cpp JSON output is constrained with `response_format`, generation is capped, and model thinking is disabled for fast deterministic rules work.
+- If evidence is insufficient, Archie returns `PARTIAL` or `NOT_IN_SRD` rather than guessing.
 
 ## Requirements
 
 - Linux/macOS/WSL with Python 3.11+
 - Pi, if you want the Pi interface
-- A local OpenAI-compatible chat endpoint, typically llama-server
-- Your local Gemma model (for example `gemma4-12b-it-q4_k_m`)
-
-Python dependencies are deliberately small: `PyMuPDF`, `PyYAML`, and `httpx`.
+- An OpenAI-compatible local chat endpoint such as llama-server
+- A local model such as `gemma4-12b-it-q4_k_m`
 
 ## First run
 
 ```bash
-cd dnd-archie-v1.0.0
+cd dnd-archie-v1.5.1
 ./scripts/bootstrap.sh
 source .venv/bin/activate
 python -m archie.cli doctor
-python -m archie.cli ingest
-python -m archie.cli search "passive perception"
-python -m archie.cli ask "Explain advantage like I'm 10."
+python -m archie.cli ask "What happens when I have advantage on a roll?"
 ```
 
-Default LLM endpoint: `http://127.0.0.1:8080/v1/chat/completions`.
-
-Override it with environment variables:
+Copy `.env.example` to `.env` and adjust your endpoint if necessary:
 
 ```bash
-export ARCHIE_LLM_BASE_URL=http://127.0.0.1:8080/v1
-export ARCHIE_LLM_MODEL=gemma4-12b-it-q4_k_m
+cp .env.example .env
 ```
+
+Typical configuration:
+
+```dotenv
+ARCHIE_LLM_BASE_URL=http://127.0.0.1:61000/v1
+ARCHIE_LLM_MODEL=gemma4-12b-it-q4_k_m
+ARCHIE_LLM_TIMEOUT=300
+ARCHIE_LLM_MAX_TOKENS=768
+ARCHIE_TOP_K=6
+ARCHIE_RETRIEVAL_CANDIDATE_K=36
+ARCHIE_NEIGHBOR_RADIUS=1
+ARCHIE_STRICT_AUDIT=1
+```
+
+Shell environment variables override `.env` values.
+
+## Useful commands
+
+```bash
+python -m archie.cli verify-source
+python -m archie.cli ingest
+python -m archie.cli search "prone condition"
+python -m archie.cli diagnose-retrieval "What does Prone do?"
+python -m archie.cli ask "What does Prone do?"
+python -m archie.cli characters
+```
+
+`diagnose-retrieval` exposes the deterministic query plan, aliases/concepts detected, primary evidence, adjacent context, and scores. It is intended for debugging retrieval without weakening the evidence gate.
 
 ## Pi usage
 
-Start Pi **from the repository root** so it loads `AGENTS.md`, `.pi/APPEND_SYSTEM.md`, and `.pi/skills/`.
+Start Pi from the repository root so it loads `AGENTS.md`, `.pi/APPEND_SYSTEM.md`, and `.pi/skills/`:
 
 ```bash
-cd dnd-archie-v1.0.0
+cd dnd-archie-v1.5.1
 pi
 ```
 
-Normal questions can be conversational. Pi can discover the project skills automatically, or you can force a skill with commands such as:
+For the strongest source-lock guarantee, route rules questions through the local CLI or `archie-rules` skill.
 
-```text
-/skill:archie-rules What does prone do?
-/skill:archie-explain Explain concentration to a 10-year-old.
-/skill:archie-character-calc Calculate passive perception for data/characters/example-ranger.yaml.
+## Validation
+
+Deterministic release checks:
+
+```bash
+./scripts/release_check.sh
 ```
 
-For the strongest source-lock guarantee, use `python -m archie.cli ask ...` or the `archie-rules` skill, both of which route through the evidence-gated answer engine. Free-form Pi behavior is additionally constrained by `AGENTS.md` and `SYSTEM.md`, but a harness prompt alone is never as strong as code enforcement.
+Live-model regression report:
+
+```bash
+./scripts/run_regression.sh
+```
+
+The live regression writes `archie-regression-results.md` for review.
 
 ## Repository map
 
 ```text
 AGENTS.md                 Durable project rules for Pi
-.pi/APPEND_SYSTEM.md      Strict Archie runtime persona/authority contract
+.pi/APPEND_SYSTEM.md      Pi runtime authority contract
 .pi/skills/               Pi Agent Skills
-archie/                    Retrieval, ingestion, answer, audit, character code
-sources/                   Approved source PDF + immutable manifest
-prompts/                   Answer/audit prompt contracts
-data/index/                Generated SQLite index (gitignored)
-data/characters/           Human-readable player YAML files
-scripts/                   Setup, ingestion, validation helpers
-tests/                     Deterministic and optional live-model tests
-docs/                      Architecture, trust model, operations
+archie/concepts.py        Canonical retrieval concepts + language aliases
+archie/retrieve.py        Retrieval v2 and diagnostics
+archie/answer.py          Evidence binding + strict answer/claim audit
+sources/                   Approved SRD PDF + immutable manifest
+data/index/                Rebuildable local SQLite index
+data/characters/           Human-readable character YAML
+scripts/                    Setup, validation, and regression helpers
+tests/                      Deterministic reliability tests
+docs/                       Architecture, retrieval, operations, validation
 ```
 
 ## Important distinction
 
-Archie may say: “That option is not covered by SRD 5.2.1, so I can't verify its rules.” It must **not** say: “That option does not exist in D&D.”
+Archie may say: **“That option is not covered by the SRD evidence I have, so I can't verify its rules.”** It must not say: **“That option does not exist in D&D.”**
 
 ## License and source attribution
 
-The project code is MIT licensed. The included SRD is a separate work distributed under CC-BY-4.0. See `sources/ATTRIBUTION.md` and the copyright/attribution material inside the source PDF.
+Project code is MIT licensed. The included SRD is a separate work distributed under CC-BY-4.0. See `sources/ATTRIBUTION.md` and the attribution material inside the PDF.

@@ -5,6 +5,7 @@ archie/__init__.py
 archie/answer.py
 archie/characters.py
 archie/cli.py
+archie/concepts.py
 archie/config.py
 archie/db.py
 archie/ingest.py
@@ -18,10 +19,14 @@ dnd_archie.egg-info/dependency_links.txt
 dnd_archie.egg-info/entry_points.txt
 dnd_archie.egg-info/requires.txt
 dnd_archie.egg-info/top_level.txt
-tests/test_answer_audit_v15.py
 tests/test_answer_guard.py
+tests/test_audit_contract_v15.py
 tests/test_characters.py
+tests/test_config.py
 tests/test_index_binding.py
 tests/test_ingest_retrieve.py
+tests/test_llm_contract_v15.py
+tests/test_reliability_v151.py
+tests/test_retrieval_v15.py
 tests/test_retrieval_v2.py
 tests/test_source.py

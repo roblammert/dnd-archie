@@ -1,4 +1,4 @@
-# Architecture
+# Architecture — v1.5
 
 ## Runtime path
 
@@ -10,7 +10,15 @@ Archie skill or CLI
    |
    +--> verify pinned SRD SHA-256
    |
-   +--> SQLite FTS5 retrieval over page-aware chunks
+   +--> Retrieval v2 query plan
+   |      - normalize natural language
+   |      - map search-only aliases
+   |      - detect canonical concepts
+   |      - reserve multi-concept coverage
+   |
+   +--> SQLite FTS5 candidate retrieval + deterministic re-ranking
+   |
+   +--> document-order neighbor expansion across page boundaries
    |
    +--> evidence packet with immutable IDs
    |
@@ -18,29 +26,33 @@ Archie skill or CLI
    |
    +--> deterministic evidence-ID validation
    |
-   +--> local Gemma evidence-only audit
+   +--> local Gemma evidence-only audit of claims AND answer coverage
    |
-   +--> fail closed if any claim is unsupported
+   +--> fail closed if any claim or answer mechanic is unsupported
    v
 Player-facing VERIFIED / DERIVED / PARTIAL / NOT_IN_SRD answer
 ```
 
-## Why FTS5 in v1
+## Why deterministic FTS5 remains the base
 
-D&D rules contain distinctive named terms, spells, features, conditions, and glossary vocabulary. SQLite FTS5 gives fast, inspectable, offline retrieval without requiring a second embedding model. The database can later add an embeddings table and reciprocal-rank fusion while preserving identical evidence IDs and authority policy.
+D&D rules contain distinctive named terms, conditions, actions, formulas, and glossary vocabulary. SQLite FTS5 is fast, inspectable, offline, and does not require an embedding model. v1.5 adds deterministic concept-aware ranking around FTS5 rather than delegating query rewriting to the LLM.
+
+Embeddings may be added later as an additional recall channel, but they must never alter the authority boundary or evidence IDs.
 
 ## Evidence IDs
 
-`SRD521-P###-C##` identifies a chunk extracted from a specific PDF page. IDs are generated deterministically during ingestion. Page boundaries are never crossed by a chunk.
+`SRD521-P###-C##` identifies a chunk extracted from one PDF page. IDs are deterministic during ingestion. Chunks remain page-bounded; retrieval may attach adjacent chunks in document order so a rule can continue naturally across a page boundary.
 
 ## Trust layers
 
 1. **Source integrity:** SHA-256 pin before ingestion and retrieval.
 2. **Closed corpus:** no network retrieval path in the answer engine.
-3. **Retrieval before generation:** answer model sees explicit local evidence.
-4. **Citation binding:** generated claim IDs must be members of retrieved evidence IDs.
-5. **Audit:** second model pass is told it knows nothing except supplied evidence.
-6. **Fail closed:** audit uncertainty yields a cautious answer rather than guessed rules.
-7. **Human inspectability:** CLI prints evidence IDs and PDF pages.
+3. **Deterministic retrieval planning:** aliases and concepts affect where Archie searches, never what it asserts.
+4. **Retrieval before generation:** answer model sees explicit local evidence.
+5. **Citation binding:** claim evidence IDs must exist in the supplied packet.
+6. **Claim audit:** a second evidence-only pass validates each structured claim.
+7. **Answer-coverage audit:** the auditor also checks that every factual mechanic in the player-facing answer is represented by supported claims.
+8. **Fail closed:** audit uncertainty yields `PARTIAL` rather than guessed rules.
+9. **Human inspectability:** CLI exposes evidence IDs, PDF pages, retrieval roles, and diagnostics.
 
-No layer alone guarantees correctness. Together they make unsupported rules claims substantially harder to emit silently.
+No single layer guarantees correctness. The architecture is intentionally redundant so unsupported rules are difficult to emit silently.

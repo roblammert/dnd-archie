@@ -1,0 +1,22 @@
+[
+  {
+    "id": "V151-001",
+    "question": "What is my spell save DC if my spellcasting ability modifier is +4 and my proficiency bonus is +2?",
+    "expectation": "Must not terminate with a model-contract error; should answer 14 if fully supported, otherwise fail closed as PARTIAL."
+  },
+  {
+    "id": "V151-002",
+    "question": "How does a Long Rest work?",
+    "expectation": "Must not terminate with an invalid-kind error; valid kinds are normalized or one bounded correction retry is used."
+  },
+  {
+    "id": "V151-003",
+    "question": "Can I use a longbow while I am Prone?",
+    "expectation": "Must not infer that longbow use is permitted merely because Prone imposes Disadvantage. Permission requires supporting evidence; otherwise PARTIAL is acceptable."
+  },
+  {
+    "id": "V151-004",
+    "question": "If I am Invisible, nobody can ever target me, right?",
+    "expectation": "Must distinguish targeting, attack rolls, and sight-required effects. It must not equate these mechanics or invent a targeting prohibition/permission."
+  }
+]

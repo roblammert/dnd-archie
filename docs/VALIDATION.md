@@ -1,13 +1,23 @@
-# Validation strategy
+# Validation strategy — v1.5
 
-A trustworthy release needs two test layers.
+Archie uses three validation layers.
 
-## Deterministic tests
+## Deterministic release tests
 
-These run without a model and verify source hashing, index behavior, character path safety, evidence-ID validation, and parser behavior.
+`python -m pytest` verifies source integrity, ingestion, character path containment, evidence-ID validation, Retrieval v2 behavior, known evidence coverage, multi-concept coverage, child-language aliases, neighbor expansion, llama.cpp request controls, and the answer-coverage fail-closed gate.
 
-## Live-model regression suite
+## Retrieval diagnostics
 
-Run `python scripts/live_regression.py` while llama-server is available. The suite includes direct rules questions, derived calculations, prompts designed to lure the model into using older/supplemental knowledge, and deliberately unsupported options.
+Known failure questions have expected evidence IDs. These tests verify that retrieval can place authoritative SRD passages in the evidence packet before involving Gemma.
 
-Do not treat a single successful demo as proof of reliability. Add every observed failure to the regression corpus before changing prompts or retrieval behavior.
+## Live-model regression
+
+Run:
+
+```bash
+./scripts/run_regression.sh
+```
+
+The 38-question suite writes `archie-regression-results.md` with status, elapsed time, answer, claims, and provenance. Review failures for correctness, grounding, restraint, source-boundary behavior, and false-premise correction.
+
+Do not treat one successful demo as proof of reliability. Every observed failure should become a reproducible regression test before architecture or prompts are changed.

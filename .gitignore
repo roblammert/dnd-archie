@@ -1,10 +1,12 @@
 .venv/
+.env
 __pycache__/
 *.pyc
 .pytest_cache/
+*.egg-info/
+build/
+dist/
 data/index/*.sqlite3
 data/index/*.sqlite3-*
 data/logs/
-.env
-builds/
-.archie-patch-backups/
+archie-regression-results*.md

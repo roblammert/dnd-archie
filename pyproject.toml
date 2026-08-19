@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "dnd-archie"
-version = "1.5.0"
+version = "1.5.1"
 description = "Local evidence-gated D&D SRD 5.2.1 player assistant"
 requires-python = ">=3.11"
 dependencies = [
@@ -14,18 +14,16 @@ dependencies = [
   "python-dotenv>=1.0,<2",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+archie = "archie.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["archie*"]
 namespaces = false
 
-[project.optional-dependencies]
-dev = ["pytest>=8,<9"]
-
-[project.scripts]
-archie = "archie.cli:main"
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-
