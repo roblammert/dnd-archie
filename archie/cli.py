@@ -18,6 +18,12 @@ def print_answer(r):
         for c in r.claims:
             refs=', '.join((f"{x} (PDF p.{byid[x].page_pdf}, {byid[x].source_id})" if byid[x].page_pdf is not None else f"{x} ({byid[x].source_id})") for x in c['evidence_ids'])
             print(f"- {c['text']} [{c['kind']}] — {refs}")
+    if getattr(r,'sources_used',None):
+        print('\nSources used:')
+        for src in r.sources_used:
+            evidence_count=len(src.get('evidence_ids',[]))
+            print(f"- {src['source_id']} [{src['authority_type']}, {src.get('edition') or '-'}] — {evidence_count} cited evidence item(s)")
+        print(f"Authority mode: {getattr(r,'source_mode','none')}")
     print(f"\nProvenance: {r.reason}")
 
 
@@ -127,7 +133,7 @@ def main(argv=None):
                     print(f"Imported {x['source_id']} as local structured content.")
                     print(f"Version: {x['version']}\nSHA-256: {x['content_sha256']}\nRecords: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}")
                     print(f"Approved: no\nEnabled: no\nLicense status: {x['license_status']}")
-                    print('Import does not grant authority. Open5e content remains unavailable to answer retrieval in alpha.4.')
+                    print('Import does not grant authority. Open5e content remains unavailable to answer retrieval in alpha.5.')
             elif args.sources_cmd=='approve':
                 x=approve_source(args.source_id,license_name=args.license_name,license_url=args.license_url,note=args.note)
                 if args.json: print(json.dumps(x,indent=2,default=str))

@@ -1,7 +1,9 @@
-# Archie v2.0.0-alpha.4
+# Archie v2.0.0-alpha.5
 
-**Stage:** Multi-Source Trust Engine
+**Milestone:** Multi-Source Answer Integration
 
-Alpha.4 is the first v2 build where a supplemental source may become searchable, but only through explicit administrator approval and enablement. The canonical SRD PDF remains highest authority. Open5e imports never auto-approve and missing license metadata blocks enablement.
+Alpha.5 keeps the alpha.4 Source Library lifecycle unchanged and adds source-aware behavior to the answer service. Answers now report only the authorities actually cited by their claims, support approved supplemental-only answers, distinguish mixed-source answers, suppress exact duplicate evidence, and fail closed on conflicting same-entity structured records.
 
-Release gate target: all inherited trust tests plus alpha.4 source-state, evidence materialization, edition isolation, authority precedence, overlap reporting, and rebuild-persistence tests.
+Release gate target: all inherited trust/source tests plus alpha.5 supplemental-only, mixed-source, duplicate-suppression, deterministic provenance, and conflict fail-closed tests.
+
+The web application is intentionally not included.

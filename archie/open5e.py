@@ -29,7 +29,7 @@ RESOURCE_ENDPOINTS: dict[str, str] = {
 
 # Alpha.3 deliberately supports only one import candidate. Expanding this set is
 # an explicit release decision, not a runtime discovery side effect.
-ALPHA4_ALLOWED_DOCUMENTS = {"srd-2024"}
+ALPHA5_ALLOWED_DOCUMENTS = {"srd-2024"}
 
 
 class Open5eError(RuntimeError):
@@ -278,8 +278,8 @@ def _write_import_manifest(document: Open5eDocument, raw_path: Path, content_sha
 
 
 def import_open5e_document(document_key: str, client: Open5eClient | None = None) -> dict[str, Any]:
-    if document_key not in ALPHA4_ALLOWED_DOCUMENTS:
-        raise Open5eError(f"Alpha.4 import policy allows only: {', '.join(sorted(ALPHA4_ALLOWED_DOCUMENTS))}. Requested: {document_key}")
+    if document_key not in ALPHA5_ALLOWED_DOCUMENTS:
+        raise Open5eError(f"Alpha.5 import policy allows only: {', '.join(sorted(ALPHA5_ALLOWED_DOCUMENTS))}. Requested: {document_key}")
     if not settings.database.exists():
         raise Open5eError("Source Library database not found. Run: python -m archie.cli ingest")
     client=client or Open5eClient(); document=client.document(document_key)
@@ -337,7 +337,7 @@ def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, int
     """Restore disabled Open5e structured imports after a generated index rebuild.
 
     Persistent storage is the source manifest plus raw JSON snapshot. SQLite is
-    generated and can be rebuilt without losing imported content. Enabled, approved imports have evidence chunks reconstructed in alpha.4.
+    generated and can be rebuilt without losing imported content. Enabled, approved imports have evidence chunks reconstructed in alpha.5.
     """
     from .source import discover_source_manifests
 

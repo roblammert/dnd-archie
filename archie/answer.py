@@ -1,10 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import re
-from .retrieve import search, evidence_packet, Evidence
+from .retrieve import search, evidence_packet, Evidence, detect_evidence_conflicts
 from .llm import chat_json, LLMContractError
 from .prompts import ANSWER_SYSTEM, AUDIT_SYSTEM, AUDIT_REPAIR_SYSTEM
 from .config import settings
+from .provenance import source_usage, format_source_note
 
 VALID_STATUS={'VERIFIED','DERIVED','PARTIAL','NOT_IN_SRD'}
 VALID_KINDS={'DIRECT','DERIVED'}
@@ -147,6 +148,8 @@ class AnswerResult:
     audit:dict|None
     reason:str
     premises:list|None=None
+    source_mode:str="none"
+    sources_used:list|None=None
 
 
 def _normalize_contract(obj: dict) -> dict:
@@ -236,10 +239,11 @@ def _validate_premise_mode(premises: list[dict], mode: str, absence_guard: bool=
 
 
 def _safe_partial(evidence: list[Evidence], reason: str, audit: dict|None=None) -> AnswerResult:
+    mode, uses=source_usage(evidence, [])
     return AnswerResult(
         'PARTIAL',
-        'I found relevant SRD material, but I could not produce a fully auditable answer. I am refusing to guess. Try asking the question again or using a narrower wording.',
-        [], evidence, audit, reason, []
+        'I found relevant approved-source material, but I could not produce a fully auditable answer. I am refusing to guess. Try asking the question again or using a narrower wording.',
+        [], evidence, audit, reason, [], mode, [u.to_dict() for u in uses]
     )
 
 
@@ -341,8 +345,20 @@ def _audit_answer(audit_user: str, claim_count: int, premise_count: int):
 def ask(question: str, character_text: str|None=None, strict_audit: bool|None=None) -> AnswerResult:
     evidence=search(question)
     if not evidence:
-        return AnswerResult('NOT_IN_SRD','I could not retrieve enough approved local evidence to verify that. This does not mean the rule or option does not exist elsewhere in D&D.',[],[],None,'No approved local evidence retrieved.',[])
+        return AnswerResult('NOT_IN_SRD','I could not retrieve enough approved local evidence to verify that. This does not mean the rule or option does not exist elsewhere in D&D.',[],[],None,'No approved local evidence retrieved.',[],'none',[])
+    conflicts=detect_evidence_conflicts(evidence)
+    if conflicts:
+        labels='; '.join(f"{x['content_type']}:{x['name']} from {', '.join(x['source_ids'])}" for x in conflicts)
+        source_mode, uses=source_usage(evidence, None)
+        return AnswerResult(
+            'PARTIAL',
+            'I found conflicting approved source records for this question, so I am refusing to combine them into one rule answer.',
+            [],evidence,None,
+            'Fail-closed source conflict: '+labels,
+            [],source_mode,[u.to_dict() for u in uses]
+        )
     packet=evidence_packet(evidence)
+    evidence_mode, evidence_sources=source_usage(evidence, None)
     mode=premise_mode(question)
     absence_guard=absence_inference_guard(question)
     forced_premise=forced_unresolved_premise(question)
@@ -350,6 +366,8 @@ def ask(question: str, character_text: str|None=None, strict_audit: bool|None=No
         mode='REQUIRED'
     user=(f"QUESTION:\n{question}\n\nPREMISE MODE: {mode}\nABSENCE-INFERENCE GUARD: {'ACTIVE' if absence_guard else 'INACTIVE'}\n"
           f"FORCED UNRESOLVED PREMISE: {forced_premise or '(none)'}\n"
+          f"EVIDENCE SOURCE MODE: {evidence_mode}\n"
+          "SOURCE AUTHORITY POLICY: official_srd outranks approved_supplement on overlap. Use supplemental evidence when it is the only approved evidence that establishes the requested fact. Do not invent a conflict, silently merge differing rules, or cite retrieved sources that are not actually needed by the answer.\n"
           "If PREMISE MODE is NONE, premises MUST be []. If REQUIRED, classify only the material proposition the player asserted or presupposed; do not classify supplied character data, numeric inputs, or the interrogative itself as a premise. If FORCED UNRESOLVED PREMISE is present, that exact proposition must remain UNRESOLVED; do not assert it or its negation.\n"
           f"\nCHARACTER DATA (facts about the player character only):\n{character_text or '(none)'}\n\nEVIDENCE PACKET:\n{packet}")
     available={e.evidence_id for e in evidence}
@@ -364,7 +382,7 @@ def ask(question: str, character_text: str|None=None, strict_audit: bool|None=No
         obj['answer']=_render_unresolved_answer(premises,claims)
         obj['reason']='The material premise is unresolved by the supplied approved evidence; only independently supported claims are stated.'
     if do_audit:
-        audit_user=(f"ORIGINAL QUESTION:\n{question}\n\nPREMISE MODE: {mode}\nABSENCE-INFERENCE GUARD: {'ACTIVE' if absence_guard else 'INACTIVE'}\nFORCED UNRESOLVED PREMISE: {forced_premise or '(none)'}\n\nCHARACTER DATA:\n{character_text or '(none)'}\n\nEVIDENCE PACKET:\n{packet}"
+        audit_user=(f"ORIGINAL QUESTION:\n{question}\n\nPREMISE MODE: {mode}\nABSENCE-INFERENCE GUARD: {'ACTIVE' if absence_guard else 'INACTIVE'}\nFORCED UNRESOLVED PREMISE: {forced_premise or '(none)'}\nEVIDENCE SOURCE MODE: {evidence_mode}\nSOURCE AUTHORITY POLICY: official_srd outranks approved_supplement on overlap; supplemental-only claims are allowed when fully supported.\n\nCHARACTER DATA:\n{character_text or '(none)'}\n\nEVIDENCE PACKET:\n{packet}"
                     f"\n\nPLAYER-FACING ANSWER:\n{obj['answer']}"
                     f"\n\nPROPOSED PREMISES:\n"+"\n".join(f"{i}. {p}" for i,p in enumerate(premises))
                     +f"\n\nPROPOSED CLAIMS:\n"+"\n".join(f"{i}. {c}" for i,c in enumerate(claims)))
@@ -375,4 +393,9 @@ def ask(question: str, character_text: str|None=None, strict_audit: bool|None=No
             base_reason=obj.get('reason','').strip()
             repair_note='Audit structured-output correction succeeded.'
             obj['reason']=(base_reason+' '+repair_note).strip()
-    return AnswerResult(obj['status'],obj['answer'],claims,evidence,audit,obj.get('reason',''),premises)
+    source_mode, uses=source_usage(evidence,claims)
+    source_note=format_source_note(source_mode,uses)
+    reason=obj.get('reason','').strip()
+    if source_note:
+        reason=(reason+' '+source_note).strip()
+    return AnswerResult(obj['status'],obj['answer'],claims,evidence,audit,reason,premises,source_mode,[u.to_dict() for u in uses])

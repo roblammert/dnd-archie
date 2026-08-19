@@ -1,29 +1,19 @@
-# Archie Agent Contract — v2.0.0-alpha.4
+# Archie Agent Contract — v2.0.0-alpha.5
 
-## Purpose
+Archie is an evidence-gated D&D player assistant. Gemma pretrained D&D knowledge is never a rules authority.
 
-Archie is a player-facing D&D assistant whose rules authority comes only from explicitly approved and enabled local evidence sources.
+## Authority rules
 
-## Frozen trust rules
+1. Only approved, licensed, enabled sources in the active edition may enter retrieval.
+2. `official_srd` outranks `approved_supplement` on overlap.
+3. Supplemental-only answers are permitted only when their cited approved evidence establishes the requested claim.
+4. Retrieved-but-uncited sources must not appear in answer provenance.
+5. Conflicting same-entity structured records must fail closed; never blend them into a hybrid rule.
+6. Exact duplicate evidence should be suppressed before generation, preserving the higher-ranked authority.
+7. Character data is factual input about a character, never rules authority.
+8. House rules and 2014 fallback are not enabled in alpha.5.
+9. The v1.6 epistemic/non-entailment and audit fail-closed behavior remains mandatory.
 
-- Gemma pretrained D&D knowledge is never a rules authority.
-- Every rules claim must be grounded in enabled local evidence and pass the existing audit contract.
-- Fail closed rather than guess.
-- Preserve source identity and provenance through retrieval and audit.
+## Frontend rule
 
-## v2 Source Library state
-
-- `srd521` is the only approved and enabled rules authority in alpha.3.
-- `open5e:srd-2024` may be imported only as disabled structured content.
-- Import is not approval. Approval is not enablement.
-- Open5e imports must create zero evidence chunks in alpha.3.
-- Never feed imported Open5e content to the LLM as rules evidence.
-- Missing license metadata must remain visible and must block automatic approval/enabling.
-- Raw Open5e JSON and provider/document identity must be preserved for provenance and reprocessing.
-- Other Open5e document keys are outside alpha.3 import policy.
-
-## Alpha.3 scope boundary
-
-Allowed: discovery, explicit `srd-2024` import, raw snapshots, structured records, hashes/versions, disabled manifests, inspection, deterministic tests.
-
-Not allowed: Open5e authority activation, evidence generation, source mixing, web UI, house-rule precedence, edition fallback.
+CLI and future web interfaces must consume the same Archie core answer service. Do not place retrieval or rules logic in frontend code.

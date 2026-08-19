@@ -121,7 +121,7 @@ def enable_source(source_id: str) -> dict:
 
 def disable_source(source_id: str) -> dict:
     if source_id == settings.source_id:
-        raise ValueError('The canonical SRD source cannot be disabled in Archie 2.0 alpha.4.')
+        raise ValueError('The canonical SRD source cannot be disabled in Archie 2.0 alpha.5.')
     path,data=_manifest_data(source_id)
     data['enabled']=False
     data['disabled_at']=_now()
@@ -138,7 +138,7 @@ def disable_source(source_id: str) -> dict:
 def source_conflicts() -> list[dict]:
     """Report same-named structured records across enabled sources in the active edition.
 
-    Alpha.4 does not attempt semantic auto-resolution. It exposes overlap so the
+    Alpha.5 does not attempt semantic auto-resolution. It exposes overlap so the
     higher-priority source can win retrieval while administrators can inspect it.
     """
     if not settings.database.exists():

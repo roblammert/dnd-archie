@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0-alpha.5
+
+- Added deterministic answer authority modes: `official_only`, `supplemental_only`, `mixed`, and `none`.
+- Added claim-scoped source provenance so only actually cited sources are reported as used.
+- Added exact duplicate evidence suppression with ranked authority precedence.
+- Added deterministic same-entity structured-source conflict detection and fail-closed handling before LLM generation.
+- Added source-authority policy context to answer generation and auditing.
+- Added CLI `Sources used` and `Authority mode` output.
+- Preserved alpha.4 approval/license/edition gates and all v1.6 epistemic protections.
+- Updated historical alpha.1/alpha.2 tests so they validate durable guarantees rather than obsolete one-source assumptions.
+
 ## 2.0.0-alpha.4
 
 - added explicit `sources approve`, `sources enable`, and `sources disable` lifecycle

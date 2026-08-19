@@ -1,18 +1,18 @@
-schema_version: 1
-player_name: Example Player
-character_name: Rowan
+player_name: Test Player
+character_name: Example Ranger
 level: 1
 class: Ranger
 species: Elf
+
 ability_scores:
   strength: 10
   dexterity: 16
   constitution: 14
   intelligence: 10
-  wisdom: 16
+  wisdom: 14
   charisma: 8
+
 proficiencies:
   skills:
     - Perception
-notes: >-
-  Example only. Character facts are inputs, never rules authority.
+    - Stealth
