@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 
 from dataclasses import asdict, dataclass, field
 
@@ -480,34 +481,166 @@ def _score_row(
     return score
 
 
-def _verify_index(c):
-    meta = dict(
+def _read_index_identity(c) -> dict:
+    """
+    Read the compatibility identity metadata used by the
+    historical v1.x integrity contract.
+    """
+
+    return dict(
         c.execute(
             """
             SELECT key, value
             FROM metadata
+            WHERE key IN (
+                'source_id',
+                'source_sha256',
+                'source_version',
+                'schema_version'
+            )
             """
         ).fetchall()
     )
+
+
+def _active_source_identity(
+    c,
+    source_id: str,
+):
+    """
+    Read the canonical generated Source Library identity for an
+    active source version.
+
+    This does not replace the compatibility metadata check. It
+    provides a second independent integrity observation used for
+    diagnostics and transient-read detection.
+    """
+
+    return c.execute(
+        """
+        SELECT
+            s.id AS source_id,
+            sv.version,
+            sv.content_sha256
+        FROM sources s
+        JOIN source_versions sv
+          ON sv.source_id = s.id
+         AND sv.active = 1
+        WHERE s.id = ?
+        """,
+        (
+            source_id,
+        ),
+    ).fetchone()
+
+
+def _index_identity_matches(
+    metadata: dict,
+    *,
+    source_id: str,
+    source_sha256: str,
+) -> bool:
+    return (
+        metadata.get("source_id")
+        == source_id
+        and metadata.get(
+            "source_sha256"
+        )
+        == source_sha256
+    )
+
+
+def _verify_index(c):
+    """
+    Verify that generated retrieval storage still corresponds to
+    the approved canonical SRD.
+
+    Historical Archie releases intentionally bind the compatibility
+    metadata table to the canonical SRD hash. That contract remains
+    intact.
+
+    Alpha.5 adds one bounded reread because the live sequential
+    regression exposed a single transient identity mismatch that
+    immediately disappeared on the next request.
+
+    A persistent mismatch still fails closed. No automatic ingest,
+    metadata rewrite, or self-healing is performed here.
+    """
 
     manifest = get_source_manifest(
         settings.source_id
     )
 
-    expected = manifest.sha256
+    expected_id = manifest.id
+    expected_sha256 = (
+        manifest.sha256
+    )
 
-    if (
-        meta.get("source_sha256")
-        != expected
-        or meta.get("source_id")
-        != manifest.id
+    metadata = (
+        _read_index_identity(c)
+    )
+
+    if _index_identity_matches(
+        metadata,
+        source_id=expected_id,
+        source_sha256=expected_sha256,
     ):
-        raise RuntimeError(
-            "SRD index does not match the approved source. "
-            "Run: python -m archie.cli ingest"
+        return
+
+    # Cross-check the normalized Source Library before doing the
+    # bounded reread. This gives a useful distinction between a
+    # transient compatibility-metadata observation and a genuinely
+    # wrong generated database.
+    active = _active_source_identity(
+        c,
+        expected_id,
+    )
+
+    active_matches = (
+        active is not None
+        and active["source_id"]
+        == expected_id
+        and active["content_sha256"]
+        == expected_sha256
+    )
+
+    # One short bounded reread is allowed only when the normalized
+    # active source/version is itself correct.
+    #
+    # This does NOT repair a bad index. Persistent metadata
+    # corruption still fails below.
+    if active_matches:
+        time.sleep(0.05)
+
+        metadata = (
+            _read_index_identity(c)
         )
 
+        if _index_identity_matches(
+            metadata,
+            source_id=expected_id,
+            source_sha256=expected_sha256,
+        ):
+            return
 
+    actual_id = metadata.get(
+        "source_id",
+        "<missing>",
+    )
+
+    actual_sha = metadata.get(
+        "source_sha256",
+        "<missing>",
+    )
+
+    raise RuntimeError(
+        "SRD index does not match the approved source. "
+        f"expected source_id={expected_id} "
+        f"sha256={expected_sha256}; "
+        f"index source_id={actual_id} "
+        f"sha256={actual_sha}. "
+        "Run: python -m archie.cli ingest"
+    )
 def _collect_candidates(
     c,
     plan: QueryPlan,
