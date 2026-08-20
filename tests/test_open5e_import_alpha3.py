@@ -10,7 +10,7 @@ import pytest
 
 import archie.open5e as open5e
 from archie.db import SCHEMA
-from archie.open5e import Open5eClient, Open5eError, import_open5e_document
+from archie.open5e import Open5eClient, Open5eError, import_open5e_document, open5e_record_admission
 
 
 def _handler(request: httpx.Request) -> httpx.Response:
@@ -70,6 +70,10 @@ def test_selective_import_is_disabled_unapproved_and_preserves_raw(monkeypatch,t
     assert result['automatic_approval_blocked'] is True
     assert result['evidence_chunks']==0
     assert result['content_records'] == 22  # 11 normalized categories x 2 records
+    assert result['diagnostics']=={
+        'observed':22,'accepted':22,'rejected_non_wotc':0,
+        'invalid_provenance':0,'normalization_failures':0,
+    }
     raw=fake.root/result['raw_snapshot']
     assert raw.exists()
     payload=json.loads(raw.read_text())
@@ -88,6 +92,50 @@ def test_selective_import_is_disabled_unapproved_and_preserves_raw(monkeypatch,t
     assert version['upstream_revision']==result['content_sha256']
     provenance=db.execute("SELECT DISTINCT authority_id,representation_id,normalization_schema_version FROM content_records WHERE source_id='open5e:srd-2024'").fetchall()
     assert [tuple(x) for x in provenance]==[('wotc:srd-5.2.1','open5e:srd-2024',1)]
+    assert db.execute("SELECT count(*) FROM evidence_chunks WHERE source_id='open5e:srd-2024'").fetchone()[0]==0
+    db.close()
+
+
+@pytest.mark.parametrize(('record','expected'),[
+    ({'document':{'key':'srd-2024'}},'accepted'),
+    ({'document':'srd-2024'},'accepted'),
+    ({'document':{'key':'third-party'}},'rejected_non_wotc'),
+    ({},'invalid_provenance'),
+    ({'document':{'key':42}},'invalid_provenance'),
+    ({'document':[{'key':'srd-2024'},{'key':'third-party'}]},'invalid_provenance'),
+])
+def test_record_admission_is_strict_and_shape_aware(record,expected):
+    assert open5e_record_admission(record)==expected
+
+
+def test_import_rejects_bad_per_record_provenance_but_preserves_raw(monkeypatch,tmp_path):
+    def mixed_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith('/documents/'):
+            return _handler(request)
+        records=[
+            {'key':'accepted-object','name':'Accepted Object','document':{'key':'srd-2024'}},
+            {'key':'accepted-scalar','name':'Accepted Scalar','document':'srd-2024'},
+            {'key':'third-party','name':'Third Party','document':{'key':'deepm'}},
+            {'key':'missing','name':'Missing'},
+            {'key':'malformed','name':'Malformed','document':{'key':42}},
+            {'key':'ambiguous','name':'Ambiguous','document':[{'key':'srd-2024'},{'key':'deepm'}]},
+        ]
+        return httpx.Response(200,json={'count':len(records),'next':None,'results':records})
+
+    fake,connect_temp,_=_temp_setup(monkeypatch,tmp_path)
+    client=Open5eClient(base_url=fake.open5e_base_url,transport=httpx.MockTransport(mixed_handler))
+    result=import_open5e_document('srd-2024',client)
+    assert result['diagnostics']=={
+        'observed':66,'accepted':22,'rejected_non_wotc':11,
+        'invalid_provenance':33,'normalization_failures':0,
+    }
+    raw=json.loads((fake.root/result['raw_snapshot']).read_text())
+    assert len(raw['resources']['spells'])==6
+    db=connect_temp()
+    records=db.execute("SELECT external_id,authority_id,representation_id FROM content_records WHERE source_id='open5e:srd-2024'").fetchall()
+    assert len(records)==22
+    assert {row['external_id'] for row in records}=={'accepted-object','accepted-scalar'}
+    assert {(row['authority_id'],row['representation_id']) for row in records}=={('wotc:srd-5.2.1','open5e:srd-2024')}
     assert db.execute("SELECT count(*) FROM evidence_chunks WHERE source_id='open5e:srd-2024'").fetchone()[0]==0
     db.close()
 

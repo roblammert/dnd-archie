@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import sqlite3
 from typing import Any
 
 import httpx
@@ -233,6 +234,90 @@ def _record_name(obj: dict[str, Any], fallback: str) -> str:
     return str(_first(obj, "name", "title", "key", default=fallback))
 
 
+def _record_document_keys(obj: dict[str, Any]) -> tuple[str, ...] | None:
+    """Resolve the Open5e document provenance shapes observed in SRD-2024.
+
+    Real records use either ``document: {key: ...}`` or the scalar
+    ``document: ...``. A sequence is never accepted, but resolving its members
+    lets diagnostics distinguish an ambiguous value from other malformed data.
+    """
+    if "document" not in obj:
+        return None
+    value = obj["document"]
+    if isinstance(value, str):
+        key = value.strip()
+        return (key,) if key else None
+    if isinstance(value, dict):
+        key = value.get("key")
+        if not isinstance(key, str) or not key.strip():
+            return None
+        return (key.strip(),)
+    if isinstance(value, (list, tuple)):
+        keys: list[str] = []
+        for item in value:
+            if isinstance(item, str) and item.strip():
+                keys.append(item.strip())
+            elif isinstance(item, dict) and isinstance(item.get("key"), str) and item["key"].strip():
+                keys.append(item["key"].strip())
+            else:
+                return None
+        return tuple(dict.fromkeys(keys)) if keys else None
+    return None
+
+
+def open5e_record_admission(obj: Any) -> str:
+    """Classify one raw Open5e record before normalization."""
+    if not isinstance(obj, dict):
+        return "invalid_provenance"
+    if isinstance(obj.get("document"), (list, tuple)):
+        return "invalid_provenance"
+    keys = _record_document_keys(obj)
+    if not keys or len(keys) != 1:
+        return "invalid_provenance"
+    return "accepted" if keys[0] == "srd-2024" else "rejected_non_wotc"
+
+
+def _normalize_open5e_resources(c, *, source_id: str, source_version_id: int,
+                                edition: str | None, resources: Any, now: str) -> dict[str, int]:
+    diagnostics = {
+        "observed": 0,
+        "accepted": 0,
+        "rejected_non_wotc": 0,
+        "invalid_provenance": 0,
+        "normalization_failures": 0,
+    }
+    if not isinstance(resources, dict):
+        diagnostics["normalization_failures"] += 1
+        return diagnostics
+    for label in sorted(resources):
+        items = resources[label]
+        if not isinstance(items, list):
+            diagnostics["normalization_failures"] += 1
+            continue
+        for idx, obj in enumerate(items, 1):
+            diagnostics["observed"] += 1
+            admission = open5e_record_admission(obj)
+            if admission != "accepted":
+                diagnostics[admission] += 1
+                continue
+            try:
+                ext = _record_external_id(obj, label, idx)
+                name = _record_name(obj, ext)
+                structured = json.dumps(obj, sort_keys=True, ensure_ascii=False)
+                c.execute(
+                    '''INSERT INTO content_records(source_id,source_version_id,external_id,content_type,name,edition,authority_id,representation_id,
+                       upstream_id,upstream_path,normalization_schema_version,structured_json,created_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    (source_id, source_version_id, ext, label, name, edition, 'wotc:srd-5.2.1', 'open5e:srd-2024',
+                     ext, f'{label}/{ext}', 1, structured, now),
+                )
+            except (TypeError, ValueError, OverflowError, sqlite3.Error):
+                diagnostics["normalization_failures"] += 1
+                continue
+            diagnostics["accepted"] += 1
+    return diagnostics
+
+
 def _ensure_alpha3_columns(c) -> None:
     initialize(c)
     cols={r[1] for r in c.execute("PRAGMA table_info(sources)")}
@@ -331,23 +416,18 @@ def import_open5e_document(document_key: str, client: Open5eClient | None = None
             if unchanged:
                 source_version_id=active['id']; version=active['version']
                 c.execute("UPDATE source_versions SET upstream_revision=? WHERE id=?",(content_sha,source_version_id))
-                c.execute('''UPDATE content_records SET authority_id='wotc:srd-5.2.1',representation_id='open5e:srd-2024',
-                             upstream_id=COALESCE(upstream_id,external_id),
-                             upstream_path=COALESCE(upstream_path,content_type || '/' || external_id),
-                             normalization_schema_version=COALESCE(normalization_schema_version,1)
-                             WHERE source_id=? AND source_version_id=?''',(source_id,source_version_id))
             else:
                 c.execute("UPDATE source_versions SET active=0 WHERE source_id=? AND active=1",(source_id,))
                 cur=c.execute('''INSERT INTO source_versions(source_id,version,imported_at,content_sha256,source_uri,filename,upstream_revision,active)
                                  VALUES(?,?,?,?,?,?,?,1)''',(source_id,version,now,content_sha,f"{client.base_url}/documents/",str(raw_path.relative_to(settings.root)),content_sha))
                 source_version_id=cur.lastrowid
-                for label, items in resources.items():
-                    for idx,obj in enumerate(items,1):
-                        ext=_record_external_id(obj,label,idx); name=_record_name(obj,ext)
-                        c.execute('''INSERT INTO content_records(source_id,source_version_id,external_id,content_type,name,edition,authority_id,representation_id,
-                                     upstream_id,upstream_path,normalization_schema_version,structured_json,created_at)
-                                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',(source_id,source_version_id,ext,label,name,'2024','wotc:srd-5.2.1','open5e:srd-2024',
-                                     ext,f'{label}/{ext}',1,json.dumps(obj,sort_keys=True,ensure_ascii=False),now))
+            # Import always disables the source. Remove any previously materialized
+            # evidence, then rebuild the active normalized records through the same
+            # per-record admission gate even when the raw content is unchanged.
+            c.execute("DELETE FROM evidence_chunks WHERE source_id=?",(source_id,))
+            c.execute("DELETE FROM content_records WHERE source_id=? AND source_version_id=?",(source_id,source_version_id))
+            diagnostics=_normalize_open5e_resources(c,source_id=source_id,source_version_id=source_version_id,
+                                                    edition='2024',resources=resources,now=now)
             record_count=c.execute("SELECT count(*) FROM content_records WHERE source_id=? AND source_version_id=?",(source_id,source_version_id)).fetchone()[0]
             evidence_count=c.execute("SELECT count(*) FROM evidence_chunks WHERE source_id=?",(source_id,)).fetchone()[0]
     finally:
@@ -355,10 +435,11 @@ def import_open5e_document(document_key: str, client: Open5eClient | None = None
     return {"ok":True,"source_id":source_id,"document_key":document_key,"version":version,"content_sha256":content_sha,
             "raw_snapshot":str(raw_path.relative_to(settings.root)),"manifest":str(manifest_path.relative_to(settings.root)),
             "content_records":record_count,"evidence_chunks":evidence_count,"approved":False,"enabled":False,
-            "license_status":license_status,"automatic_approval_blocked":True,"unchanged":unchanged}
+            "license_status":license_status,"automatic_approval_blocked":True,"unchanged":unchanged,
+            "diagnostics":diagnostics}
 
 
-def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, int]:
+def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, Any]:
     """Restore disabled Open5e structured imports after a generated index rebuild.
 
     Persistent storage is the source manifest plus raw JSON snapshot. SQLite is
@@ -369,6 +450,13 @@ def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, int
     now = imported_at or datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     restored_sources = 0
     restored_records = 0
+    diagnostics = {
+        "observed": 0,
+        "accepted": 0,
+        "rejected_non_wotc": 0,
+        "invalid_provenance": 0,
+        "normalization_failures": 0,
+    }
     _ensure_alpha3_columns(c)
 
     for manifest in discover_source_manifests():
@@ -397,22 +485,13 @@ def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, int
         )
         version_id = cur.lastrowid
         resources = raw.get('resources') or {}
-        for label, items in resources.items():
-            if not isinstance(items, list):
-                continue
-            for idx, obj in enumerate(items, 1):
-                if not isinstance(obj, dict):
-                    continue
-                ext = _record_external_id(obj, label, idx)
-                name = _record_name(obj, ext)
-                c.execute(
-                    '''INSERT INTO content_records(source_id,source_version_id,external_id,content_type,name,edition,authority_id,representation_id,
-                       upstream_id,upstream_path,normalization_schema_version,structured_json,created_at)
-                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-                    (manifest.id, version_id, ext, label, name, manifest.edition, manifest.authority_id, manifest.representation_id,
-                     ext, f'{label}/{ext}', 1, json.dumps(obj, sort_keys=True, ensure_ascii=False), now),
-                )
-                restored_records += 1
+        source_diagnostics = _normalize_open5e_resources(
+            c, source_id=manifest.id, source_version_id=version_id,
+            edition=manifest.edition, resources=resources, now=now,
+        )
+        for key in diagnostics:
+            diagnostics[key] += source_diagnostics[key]
+        restored_records += source_diagnostics['accepted']
         if manifest.enabled:
             if not manifest.approved or manifest.license_status != 'present':
                 raise Open5eError(f'Enabled stored source is not approved/licensed: {manifest.id}')
@@ -420,4 +499,4 @@ def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, int
             materialize_structured_evidence(c, manifest.id)
         restored_sources += 1
 
-    return {'sources': restored_sources, 'content_records': restored_records}
+    return {'sources': restored_sources, 'content_records': restored_records, 'diagnostics': diagnostics}

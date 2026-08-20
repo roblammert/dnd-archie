@@ -132,6 +132,8 @@ def main(argv=None):
                 else:
                     print(f"Imported {x['source_id']} as local structured content.")
                     print(f"Version: {x['version']}\nSHA-256: {x['content_sha256']}\nRecords: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}")
+                    diag=x['diagnostics']
+                    print(f"Observed: {diag['observed']}\nAccepted: {diag['accepted']}\nRejected non-WotC: {diag['rejected_non_wotc']}\nInvalid provenance: {diag['invalid_provenance']}\nNormalization failures: {diag['normalization_failures']}")
                     print(f"Approved: no\nEnabled: no\nLicense status: {x['license_status']}")
                     print('Import does not grant authority. Open5e content remains unavailable to answer retrieval in alpha.5.')
             elif args.sources_cmd=='approve':

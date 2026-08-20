@@ -109,4 +109,6 @@ def ingest() -> dict:
         c.executemany('INSERT INTO metadata(key,value) VALUES(?,?)',meta.items())
         restored=rehydrate_open5e_imports(c, now)
     c.close(); doc.close()
-    return {'ok':True,**meta,'restored_open5e_sources':restored['sources'],'restored_open5e_records':restored['content_records']}
+    return {'ok':True,**meta,'restored_open5e_sources':restored['sources'],
+            'restored_open5e_records':restored['content_records'],
+            'restored_open5e_diagnostics':restored['diagnostics']}

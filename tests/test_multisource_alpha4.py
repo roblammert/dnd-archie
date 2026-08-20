@@ -170,7 +170,11 @@ def test_rehydrate_restores_enabled_approved_source_with_evidence(monkeypatch,tm
     raw=source_dir/'raw.json'
     payload={
         'provider':'open5e','document_key':'srd-2024','content_sha256':'content-test',
-        'resources':{'spells':[{'key':'spark','name':'Spark','desc':'A rebuild persistence test spell.'}]}
+        'resources':{'spells':[
+            {'key':'spark','name':'Spark','desc':'A rebuild persistence test spell.','document':{'key':'srd-2024'}},
+            {'key':'other','name':'Other','document':{'key':'third-party'}},
+            {'key':'missing','name':'Missing'},
+        ]}
     }
     raw.write_text(json.dumps(payload)+'\n')
     sha=hashlib.sha256(raw.read_bytes()).hexdigest()
@@ -185,7 +189,10 @@ def test_rehydrate_restores_enabled_approved_source_with_evidence(monkeypatch,tm
     c=_connect(st.database); c.executescript(SCHEMA)
     result=o5.rehydrate_open5e_imports(c,'now')
     c.commit()
-    assert result=={'sources':1,'content_records':1}
+    assert result=={'sources':1,'content_records':1,'diagnostics':{
+        'observed':3,'accepted':1,'rejected_non_wotc':1,
+        'invalid_provenance':1,'normalization_failures':0,
+    }}
     assert tuple(c.execute("SELECT enabled,approved FROM sources WHERE id='open5e:srd-2024'").fetchone())==(1,1)
     assert c.execute("SELECT count(*) FROM evidence_chunks WHERE source_id='open5e:srd-2024'").fetchone()[0] >= 1
     c.close()
