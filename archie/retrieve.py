@@ -94,6 +94,28 @@ SUPPLEMENTAL_AUTHORITIES = {
     "approved_supplement",
 }
 
+# Query aliases are deliberately limited to unambiguous structured stat fields.
+# Values use evidence_families.semantic_key spelling after underscore folding.
+FIELD_QUERY_ALIASES = {
+    "hp": "hit points",
+    "ac": "armor class",
+    "cr": "challenge rating",
+}
+
+# Bare exact-name lookup uses this ordering only inside the exact-name candidate
+# set. It does not alter FTS/family scores; explicit type/table language wins.
+BARE_ENTITY_TYPE_PRIORITY = {
+    "class": 5.0,
+    "subclass": 5.0,
+    "monster": 4.0,
+    "species": 4.0,
+    "spell": 4.0,
+    "background": 3.0,
+    "feat": 3.0,
+    "equipment": 2.0,
+    "magic-item": 1.0,
+}
+
 
 @dataclass
 class Evidence:
@@ -200,6 +222,10 @@ def _find_concepts(
 def build_query_plan(q: str) -> QueryPlan:
     aliases = _find_aliases(q)
     lower = q.lower()
+
+    for alias, semantic_key in FIELD_QUERY_ALIASES.items():
+        if re.search(rf"\b{re.escape(alias)}\b", lower) and semantic_key not in aliases:
+            aliases.append(semantic_key)
 
     # Deterministic intent bridges for common
     # natural-language phrasing.
@@ -312,6 +338,49 @@ def _query_intent(q: str) -> str:
     return "general"
 
 
+def _requested_field_keys(q: str) -> set[str]:
+    """Return explicit structured-field requests; aliases never cross fields."""
+    lower = q.lower()
+    requested = {
+        key.replace("_", " ")
+        for key in (
+            "range", "casting_time", "duration", "damage", "cost", "weight",
+            "armor_class", "hit_points", "hit_point_formula", "speed", "school",
+            "level", "challenge_rating", "components",
+        )
+        if re.search(rf"\b{re.escape(key.replace('_', ' '))}\b", lower)
+    }
+    for alias, semantic_key in FIELD_QUERY_ALIASES.items():
+        if re.search(rf"\b{re.escape(alias)}\b", lower):
+            requested.add(semantic_key)
+    return requested
+
+
+def _entity_type(entity_id: str | None) -> str | None:
+    if not entity_id:
+        return None
+    parts = entity_id.split("/")
+    return parts[1] if len(parts) > 2 else None
+
+
+def _requested_entity_types(q: str) -> set[str]:
+    """Small deterministic type vocabulary; no fuzzy or inferred identity."""
+    lower = q.lower()
+    cues = (
+        (r"\b(monsters?|creatures?)\b", "monster"),
+        (r"\bspells?\b", "spell"),
+        (r"\b(species|races?)\b", "species"),
+        (r"\bsubclasses?\b", "subclass"),
+        (r"\bclasses?\b", "class"),
+        (r"\bfeats?\b", "feat"),
+        (r"\bmagic items?\b", "magic-item"),
+        (r"\b(weapons?|equipment)\b", "equipment"),
+        (r"\b(actions?)\b", "action"),
+        (r"\brules?\b", "rule"),
+    )
+    return {entity_type for pattern, entity_type in cues if re.search(pattern, lower)}
+
+
 def _escape(term: str) -> str:
     return term.replace(
         '"',
@@ -324,10 +393,11 @@ def _add_exact_entity_subqueries(c, plan: QueryPlan) -> None:
     lower = plan.original.lower()
     normalized_query = re.sub(r"[^a-z0-9]+", " ", lower).strip()
     names = []
+    exact_types = set()
     field_labels = {"armor class", "hit points", "casting time", "range", "duration",
                     "components", "damage", "cost", "weight", "speed", "school", "level"}
-    for row in c.execute("SELECT DISTINCT display_name FROM canonical_entities ORDER BY length(display_name) DESC,display_name"):
-        name = (row[0] or "").strip()
+    for row in c.execute("SELECT DISTINCT display_name,entity_type FROM canonical_entities ORDER BY length(display_name) DESC,display_name"):
+        name = (row["display_name"] or "").strip()
         normalized_name = re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
         alternate = ""
         if "," in name:
@@ -339,8 +409,22 @@ def _add_exact_entity_subqueries(c, plan: QueryPlan) -> None:
             or alternate == normalized_query
         ):
             names.append(name.lower())
+            if normalized_name == normalized_query or alternate == normalized_query:
+                exact_types.add(row["entity_type"])
     plan.entity_names = list(dict.fromkeys(names))[:8]
-    plan.subqueries = list(dict.fromkeys(plan.subqueries + plan.entity_names))
+    exact_bare_name = normalized_query in {
+        re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
+        for name in plan.entity_names
+    }
+    # Only bare exact-name and explicitly type-qualified lookups move ahead of
+    # historical concept bridges. Ordinary core-rule queries keep PDF fallback
+    # reservation behavior unchanged.
+    if ((exact_bare_name and len(exact_types) > 1)
+            or _requested_entity_types(plan.original)
+            or _requested_field_keys(plan.original)):
+        plan.subqueries = list(dict.fromkeys(plan.entity_names + plan.subqueries))
+    else:
+        plan.subqueries = list(dict.fromkeys(plan.subqueries + plan.entity_names))
 
 
 def _fts_or(
@@ -368,6 +452,7 @@ def _fetch_fts(
     limit: int,
     *,
     authority_types: set[str] | None = None,
+    evidence_kinds: set[str] | None = None,
 ):
     """
     Retrieve candidates from enabled, approved, licensed
@@ -389,6 +474,7 @@ def _fetch_fts(
     ]
 
     authority_clause = ""
+    kind_clause = ""
 
     if authority_types:
         ordered = sorted(
@@ -407,6 +493,11 @@ def _fetch_fts(
         )
 
         params.extend(ordered)
+
+    if evidence_kinds:
+        kinds = sorted(evidence_kinds)
+        kind_clause = f" AND c.evidence_kind IN ({','.join('?' for _ in kinds)})"
+        params.extend(kinds)
 
     params.append(limit)
 
@@ -451,6 +542,7 @@ def _fetch_fts(
               OR s.edition = ?
           )
           {authority_clause}
+          {kind_clause}
       ORDER BY rank
       LIMIT ?
     """
@@ -759,6 +851,24 @@ def _collect_candidates(
             ["broad"],
         )
 
+    # Table intent gets one bounded, kind-filtered candidate load. Without it,
+    # broad structured-record matches can consume LIMIT before eligible tables
+    # are visible. This is a single query, not per-family/entity expansion.
+    if plan.intent == "table":
+        for row in _fetch_fts(
+            c, broad, candidate_k,
+            authority_types=authority_types,
+            evidence_kinds={"table"},
+        ):
+            key = (row["id"], row["family_id"] or "")
+            score = _score_row(row, plan, "kind:table")
+            old = candidates.get(key)
+            candidates[key] = (
+                row,
+                max(old[1], score) if old else score,
+                list(dict.fromkeys((old[2] if old else []) + ["kind:table"])),
+            )
+
     for subquery in plan.subqueries:
         phrase = (
             '"'
@@ -1041,13 +1151,21 @@ def _candidate_to_evidence(
 
 def _family_aware_select(ranked, plan: QueryPlan, top_k: int):
     """Budget families, never representation matches; choose one suited member."""
+    requested_fields = _requested_field_keys(plan.original)
+    requested_types = _requested_entity_types(plan.original)
+    normalized_query = re.sub(r"[^a-z0-9]+", " ", plan.original.lower()).strip()
+    bare_exact = normalized_query in {
+        re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
+        for name in plan.entity_names
+    }
     families = {}
     for item in ranked:
         row, score, matched = item
         semantic_key = (row["semantic_key"] or "").replace("_", " ").lower()
         semantic_requested = bool(
             semantic_key
-            and re.search(rf"\b{re.escape(semantic_key)}\b", plan.original.lower())
+            and (semantic_key in requested_fields
+                 or re.search(rf"\b{re.escape(semantic_key)}\b", plan.original.lower()))
         )
         # A retained field discrepancy blocks only a query that requests that
         # field. It must not poison unrelated claims about the same entity.
@@ -1063,17 +1181,11 @@ def _family_aware_select(ranked, plan: QueryPlan, top_k: int):
         if preferred_family and row["family_type"] == preferred_family:
             score += 12.0 if plan.intent == "feature" else 6.0
             item = (row, score, matched)
-        type_hints = {
-            "class": "/class/", "spell": "/spell/", "monster": "/monster/",
-            "species": "/species/", "equipment": "/equipment/",
-            "rule": "/rule/", "magic item": "/magic-item/",
-        }
         entity_id = row["canonical_entity_id"] or ""
-        for cue, segment in type_hints.items():
-            if re.search(rf"\b{re.escape(cue)}s?\b", plan.original.lower()) and segment in entity_id:
-                score += 6.0
-                item = (row, score, matched)
-                break
+        entity_type = _entity_type(entity_id)
+        if entity_type in requested_types:
+            score += 6.0
+            item = (row, score, matched)
         key = row["family_id"] or f"isolated:{row['representation_id']}:{row['evidence_id']}"
         families.setdefault(key, []).append(item)
 
@@ -1104,7 +1216,6 @@ def _family_aware_select(ranked, plan: QueryPlan, top_k: int):
     # When alternatives exist, no canonical entity may consume the full budget.
     entity_count = len({value[1] for value in selected_families})
     entity_cap = top_k if entity_count <= 1 else max(1, (top_k + 1) // 2)
-    normalized_query = re.sub(r"[^a-z0-9]+", " ", plan.original.lower()).strip()
     focus_entity = None
     if selected_families:
         top_row = selected_families[0][0][0]
@@ -1127,8 +1238,10 @@ def _family_aware_select(ranked, plan: QueryPlan, top_k: int):
                  if value[2] not in selected_keys and tag in value[0][2]]
         requested_field = next((value for value in exact
                                 if plan.intent == "field" and value[0][0]["family_type"] == "field"
-                                and (value[0][0]["semantic_key"] or "").replace("_", " ").lower()
-                                in plan.original.lower()), None)
+                                and ((value[0][0]["semantic_key"] or "").replace("_", " ").lower()
+                                     in requested_fields
+                                     or (value[0][0]["semantic_key"] or "").replace("_", " ").lower()
+                                     in plan.original.lower())), None)
         if requested_field:
             match = requested_field
         elif subquery in plan.entity_names:
@@ -1137,8 +1250,19 @@ def _family_aware_select(ranked, plan: QueryPlan, top_k: int):
                      and value[0][0]["family_id"] is not None]
             preferred = {"table": "table", "feature": "feature", "explanation": "prose_rule"}.get(plan.intent)
             preferred_match = next((value for value in named if value[0][0]["family_type"] == preferred), None)
-            match = (preferred_match if preferred else
-                     (named[0] if named else (exact[0] if exact else None)))
+            typed_match = next((value for value in named
+                                if _entity_type(value[0][0]["canonical_entity_id"]) in requested_types), None)
+            bare_match = (max(named, key=lambda value: (
+                BARE_ENTITY_TYPE_PRIORITY.get(_entity_type(value[0][0]["canonical_entity_id"]), 0.0),
+                value[0][1],
+            )) if bare_exact and named else None)
+            if preferred:
+                # Preserve the historical fall-through: a feature/table/prose
+                # family whose record has a different name may win globally.
+                match = preferred_match
+            else:
+                match = (typed_match if requested_types else bare_match if bare_match else
+                         (named[0] if named else (exact[0] if exact else None)))
         else:
             # Historical PDF chunks without deterministic family links retain one
             # exact-concept fallback slot (and therefore their neighbor context).

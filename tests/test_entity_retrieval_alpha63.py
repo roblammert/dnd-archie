@@ -118,6 +118,50 @@ def test_field_feature_table_and_variant_intents_target_the_requested_kind():
     assert search("High Elf", 5, expand_neighbors=False)[0].canonical_entity_id == "wotc:srd-5.2.1/species/elf-high"
 
 
+@pytest.mark.parametrize("query,suffix", (
+    ("Aboleth HP", "/monster/aboleth/field/hit-points"),
+    ("Aboleth hit points", "/monster/aboleth/field/hit-points"),
+    ("Aboleth AC", "/monster/aboleth/field/armor-class"),
+    ("Aboleth armor class", "/monster/aboleth/field/armor-class"),
+    ("Aboleth CR", "/monster/aboleth/field/challenge-rating"),
+))
+def test_field_aliases_select_only_the_requested_stat_family(query, suffix):
+    first = search(query, 5, expand_neighbors=False)[0]
+    assert first.evidence_family_id.endswith(suffix)
+    if query.endswith("HP"):
+        assert not first.evidence_family_id.endswith("/hit-point-formula")
+
+
+def test_bare_exact_names_prefer_primary_entity_types_but_explicit_intent_wins():
+    assert search("Giant Fly", 5, expand_neighbors=False)[0].canonical_entity_id == "wotc:srd-5.2.1/monster/giant-fly"
+    assert search("Giant Fly monster", 5, expand_neighbors=False)[0].canonical_entity_id == "wotc:srd-5.2.1/monster/giant-fly"
+    assert search("Giant Fly magic item", 5, expand_neighbors=False)[0].canonical_entity_id == "wotc:srd-5.2.1/magic-item/giant-fly"
+    assert search("Elf", 5, expand_neighbors=False)[0].canonical_entity_id == "wotc:srd-5.2.1/species/elf"
+    assert search("Elf species", 5, expand_neighbors=False)[0].canonical_entity_id == "wotc:srd-5.2.1/species/elf"
+    assert search("Elf table", 5, expand_neighbors=False)[0].evidence_kind == "table"
+
+
+@pytest.mark.parametrize("query,entity_type", (
+    ("Resistance spell", "/spell/"),
+    ("Light rule", "/rule/"), ("Light spell", "/spell/"),
+    ("Bestow Curse spell", "/spell/"),
+))
+def test_explicit_type_intent_disambiguates_same_name_entities(query, entity_type):
+    assert entity_type in search(query, 5, expand_neighbors=False)[0].canonical_entity_id
+
+
+def test_resistance_rule_uses_safe_unmapped_rule_fallback_not_the_spell():
+    first = search("Resistance rule", 5, expand_neighbors=False)[0]
+    assert first.canonical_entity_id is None
+    assert "/isolated/cantilux-dnd-srd-json/resistance-" in first.evidence_family_id
+
+
+def test_table_progression_intent_loads_tables_without_displacing_explanations():
+    for query in ("class progression", "class progression table", "Sorcerer progression", "Sorcerer class table"):
+        assert search(query, 5, expand_neighbors=False)[0].evidence_kind == "table"
+    assert search("explain Sorcerer", 5, expand_neighbors=False)[0].evidence_kind == "prose"
+
+
 def test_all_representations_are_one_internal_authority():
     evidence = search("explain Fireball", top_k=5, expand_neighbors=False)
     assert {item.authority_id for item in evidence} == {"wotc:srd-5.2.1"}
