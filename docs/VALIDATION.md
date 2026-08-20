@@ -1,10 +1,12 @@
-# Validation strategy — v1.5
+# Validation strategy — v2.0.0-alpha.5.1
 
 Archie uses three validation layers.
 
 ## Deterministic release tests
 
 `python -m pytest` verifies source integrity, ingestion, character path containment, evidence-ID validation, Retrieval v2 behavior, known evidence coverage, multi-concept coverage, child-language aliases, neighbor expansion, llama.cpp request controls, and the answer-coverage fail-closed gate.
+
+Alpha.5.1 additionally verifies all pinned source hashes, exact authority/representation bindings, the WotC-only admission boundary, Foundry/Cantilux quarantine, repeat-idempotent Open5e rehydration, and deterministic substantive fingerprints across clean rebuilds. Run `python -m archie.cli sources verify` before the suite; release validation expects 6,902 normalized records and 3,963 evidence chunks.
 
 ## Retrieval diagnostics
 

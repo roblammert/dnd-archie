@@ -1,6 +1,13 @@
-# v1.6.0-rc.1 release validation
+# v2.0.0-alpha.5.1 release validation
 
-Dev.4 is the release-candidate hardening build from dev.3.
+- Package: `2.0.0a5.post1`
+- Base: `v2.0.0-alpha.5`
+- Authority: `wotc:srd-5.2.1`
+- Representations: 4
+- Expected normalized corpus: 6,902 records
+- Expected evidence: 3,963 chunks
+- Searchable: official + Open5e
+- Non-searchable: Foundry + Cantilux
 
 Required deterministic gates:
 
@@ -10,16 +17,21 @@ Required deterministic gates:
 
 This verifies the pinned SRD source, rebuilds the index, runs the complete deterministic test suite, compiles the code, and runs retrieval smoke checks.
 
-Required live Gemma acceptance:
+The deterministic gate verifies pinned artifacts, rebuilds the index, runs the complete suite, compiles code, and runs retrieval/source smoke checks. It requires the repository `.venv` on `PATH` and no network or live model.
+
+Optional live Gemma acceptance inherited from alpha.5:
 
 ```bash
 ./scripts/run_regression.sh
 ./scripts/run_epistemic_regression.sh
 ```
 
-Acceptance targets:
+Final deterministic results (2026-08-20):
 
-- Existing 38-question baseline remains semantically acceptable.
-- Existing 7-question epistemic suite remains acceptable.
-- `Can I use a longbow while Prone?` must not infer permission from Disadvantage or absence of prohibition.
-- A single malformed auditor JSON response should be retried once; a repeated malformed response must fail closed.
+- Complete pytest suite: 198 passed.
+- Enabled-source verification: 2 enabled sources verified.
+- Release check: PASS.
+- Two clean rebuilds: matching substantive fingerprint `1ee9f26b61a32f74dade72116dff397109c49f859f2bd04386553128f9b7b27f`.
+- WotC-only authority, exact four-representation set, 6,902 records, and 3,963 evidence chunks: PASS.
+- Foundry/Cantilux evidence and FTS quarantine: PASS.
+- Open5e repeat rehydration: PASS.

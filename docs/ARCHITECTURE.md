@@ -1,4 +1,12 @@
-# Architecture — v1.5
+# Architecture — v2.0.0-alpha.5.1
+
+## Authority and representations
+
+The sole D&D content authority is WotC SRD 5.2.1 (`wotc:srd-5.2.1`). Authority answers who owns the rules content; representation identifies the pinned machine-readable form. The ingestion topology contains the official PDF, Open5e SRD-2024, Foundry SRD 5.2, and Cantilux dnd-srd-json representations.
+
+Official and Open5e evidence retain alpha.5 retrieval behavior. Foundry and Cantilux records are normalized but quarantined from evidence, FTS, and retrieval until alpha.6. Exact source/representation bindings and importer-specific provenance checks prevent a valid authority label from bypassing admission.
+
+Rebuilds start from pinned artifacts. A substantive corpus fingerprint excludes volatile timestamps and database row IDs so two rebuilds can be compared deterministically across all normalized records.
 
 ## Runtime path
 
@@ -8,7 +16,7 @@ Player / Pi
    v
 Archie skill or CLI
    |
-   +--> verify pinned SRD SHA-256
+   +--> verify pinned source hashes and provenance
    |
    +--> Retrieval v2 query plan
    |      - normalize natural language

@@ -1,9 +1,17 @@
-# Archie v2.0.0-alpha.5
+# Archie v2.0.0-alpha.5.1
 
-**Milestone:** Multi-Source Answer Integration
+- Package: `2.0.0a5.post1`
+- Base: `v2.0.0-alpha.5`
+- Purpose: WotC SRD 5.2.1 multi-representation ingestion bridge before alpha.6.
+- Sole authority: `wotc:srd-5.2.1`
 
-Alpha.5 keeps the alpha.4 Source Library lifecycle unchanged and adds source-aware behavior to the answer service. Answers now report only the authorities actually cited by their claims, support approved supplemental-only answers, distinguish mixed-source answers, suppress exact duplicate evidence, and fail closed on conflicting same-entity structured records.
+Validated source inventory:
 
-Release gate target: all inherited trust/source tests plus alpha.5 supplemental-only, mixed-source, duplicate-suppression, deterministic provenance, and conflict fail-closed tests.
+| Source | Representation | State |
+|---|---|---|
+| `srd521` | `wotc:official-srd-5.2.1` | searchable |
+| `open5e:srd-2024` | `open5e:srd-2024` | searchable |
+| `foundry:srd-5.2` | `foundry:srd-5.2` | disabled/non-searchable |
+| `cantilux:dnd-srd-json` | `cantilux:dnd-srd-json` | disabled/non-searchable |
 
-The web application is intentionally not included.
+Final cross-representation authority selection, deduplication, conflict resolution, retrieval hardening, and answer minimization remain intentionally deferred to alpha.6.

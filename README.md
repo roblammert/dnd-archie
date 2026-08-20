@@ -1,6 +1,6 @@
-# Archie v2.0.0-alpha.5
+# Archie v2.0.0-alpha.5.1
 
-Archie is a local, evidence-gated D&D player assistant. Alpha.5 adds **multi-source answer integration** on top of alpha.4's approved Source Library.
+Archie is a local, evidence-gated D&D player assistant. SRD 5.2.1, identified as `wotc:srd-5.2.1`, is its sole D&D rules authority.
 
 ## What changed
 
@@ -14,6 +14,8 @@ Approved Open5e `srd-2024` evidence can now participate in answers with determin
 Only sources actually cited by answer claims are reported as used. The official SRD remains higher priority than approved supplements. Exact duplicate evidence is suppressed before generation. Conflicting same-entity structured records fail closed before the LLM is called.
 
 Gemma pretrained D&D knowledge remains non-authoritative.
+
+Alpha.5.1 stores four pinned representations of that authority: the official PDF, Open5e SRD-2024, Foundry SRD 5.2, and Cantilux dnd-srd-json. The official and Open5e representations retain existing search behavior. Foundry and Cantilux are ingestion-only, disabled, and non-searchable, so they do not alter answers.
 
 ## Bootstrap
 
@@ -48,6 +50,7 @@ The CLI prints evidence-backed claims followed by the exact sources actually cit
 ## Release checks
 
 ```bash
+source .venv/bin/activate
 ./scripts/release_check.sh
 ./scripts/run_regression.sh
 ./scripts/run_epistemic_regression.sh
