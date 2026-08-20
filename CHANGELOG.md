@@ -1,5 +1,27 @@
 # Changelog
 
+## v2.0.0-alpha.5.1
+
+### Added
+
+- Representation-aware provenance and the explicit `wotc:srd-5.2.1` authority identity.
+- Per-record Open5e provenance hardening and pinned Foundry SRD 5.2 and Cantilux SRD 5.2.1 ingestion.
+- Deterministic source snapshot verification, substantive corpus fingerprinting, and rebuild, idempotency, admission-boundary validation.
+
+### Changed
+
+- Source records now distinguish legacy source classification, content authority, and machine-readable representation.
+- Open5e rehydration is repeat-idempotent; authority declaration schema and exact source bindings fail closed.
+
+### Compatibility
+
+- Official SRD behavior and existing Open5e alpha.5 retrieval behavior are unchanged.
+- Foundry and Cantilux are normalized but remain disabled and non-searchable.
+
+### Deferred to alpha.6
+
+- Entity-aware retrieval, final cross-representation deduplication, representation preference, conflict resolution, claim minimization, and answer-source selection changes.
+
 ## 2.0.0-alpha.5
 
 - Added deterministic answer authority modes: `official_only`, `supplemental_only`, `mixed`, and `none`.

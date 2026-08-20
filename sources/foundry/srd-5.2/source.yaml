@@ -1,0 +1,22 @@
+id: foundry:srd-5.2
+name: Foundry D&D5e representation of SRD 5.2
+source_type: foundry_snapshot
+authority_type: approved_supplement
+authority_id: wotc:srd-5.2.1
+representation_id: foundry:srd-5.2
+edition: "2024"
+enabled: false
+approved: true
+license_status: present
+provider: foundry-dnd5e
+provider_document_key: srd-5.2
+priority: 90
+license_name: CC-BY-4.0
+license_url: https://creativecommons.org/licenses/by/4.0/
+homepage_url: https://github.com/foundryvtt/dnd5e
+version:
+  version: release-5.2.0
+  filename: raw/foundry-srd-5.2-release-5.2.0.json
+  sha256: 079bb0ae63431fbdea5e4e55cec1ee2d4f9f1772f6f420d6060285291d5219f8
+  source_uri: https://github.com/foundryvtt/dnd5e/tree/905c29bcab6a0c6622f3ac6b70f9e040bacbedac
+  upstream_revision: 905c29bcab6a0c6622f3ac6b70f9e040bacbedac

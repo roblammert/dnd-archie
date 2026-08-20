@@ -1,5 +1,6 @@
 from __future__ import annotations
 import argparse, json, sys
+from pathlib import Path
 from .source import verify_source
 from .source_library import list_sources, show_source, verify_sources, approve_source, enable_source, disable_source, source_conflicts
 from .ingest import ingest
@@ -8,6 +9,8 @@ from .answer import ask
 from .characters import load_character,list_characters
 from .config import settings
 from .open5e import discover_open5e, inventory_from_snapshot, import_open5e_document
+from .foundry import acquire_foundry_snapshot, import_foundry_snapshot
+from .cantilux import acquire_cantilux_snapshot, import_cantilux_snapshot
 
 
 def print_answer(r):
@@ -61,8 +64,10 @@ def main(argv=None):
     sd.add_argument('provider',choices=['open5e']); sd.add_argument('--json',action='store_true')
     si=srcsub.add_parser('inventory',help='Inspect the latest external discovery snapshot')
     si.add_argument('provider',choices=['open5e']); si.add_argument('--document'); si.add_argument('--json',action='store_true')
-    simp=srcsub.add_parser('import',help='Import an explicitly allowed external document into the local Source Library (disabled)')
-    simp.add_argument('provider',choices=['open5e']); simp.add_argument('document'); simp.add_argument('--json',action='store_true')
+    sacq=srcsub.add_parser('acquire',help='Reproducibly acquire a pinned external source snapshot')
+    sacq.add_argument('provider',choices=['foundry','cantilux']); sacq.add_argument('--checkout'); sacq.add_argument('--output'); sacq.add_argument('--json',action='store_true')
+    simp=srcsub.add_parser('import',help='Import an explicitly allowed external snapshot into the local Source Library')
+    simp.add_argument('provider',choices=['open5e','foundry','cantilux']); simp.add_argument('document'); simp.add_argument('--json',action='store_true')
     sap=srcsub.add_parser('approve',help='Explicitly approve an imported source after license review')
     sap.add_argument('source_id'); sap.add_argument('--license-name',required=True); sap.add_argument('--license-url',required=True); sap.add_argument('--note'); sap.add_argument('--json',action='store_true')
     sen=srcsub.add_parser('enable',help='Enable an approved source and materialize searchable evidence')
@@ -99,7 +104,7 @@ def main(argv=None):
                 x=show_source(args.source_id)
                 if args.json: print(json.dumps(x,indent=2))
                 else:
-                    print(f"Source: {x['name']}\nID: {x['id']}\nType: {x['source_type']}\nAuthority: {x['authority_type']}\nEdition: {x['edition'] or '-'}\nApproved: {'yes' if x['approved'] else 'no'}\nEnabled: {'yes' if x['enabled'] else 'no'}\nLicense status: {x['license_status']}\nProvider: {x.get('provider') or '-'}\nProvider document: {x.get('provider_document_key') or '-'}\nPriority: {x['priority']}\nVersion: {x['version']}\nSnapshot file SHA-256: {x['sha256']}\nCanonical content SHA-256: {x.get('active_content_sha256') or '-'}\nContent records: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}\nStatus: VERIFIED")
+                    print(f"Source: {x['name']}\nID: {x['id']}\nType: {x['source_type']}\nAuthority type: {x['authority_type']}\nAuthority ID: {x.get('authority_id') or '-'}\nRepresentation ID: {x.get('representation_id') or '-'}\nEdition: {x['edition'] or '-'}\nApproved: {'yes' if x['approved'] else 'no'}\nEnabled: {'yes' if x['enabled'] else 'no'}\nLicense status: {x['license_status']}\nProvider: {x.get('provider') or '-'}\nProvider document: {x.get('provider_document_key') or '-'}\nPriority: {x['priority']}\nVersion: {x['version']}\nUpstream revision: {x.get('upstream_revision') or '-'}\nSnapshot file SHA-256: {x['sha256']}\nCanonical content SHA-256: {x.get('active_content_sha256') or '-'}\nContent records: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}\nStatus: VERIFIED")
             elif args.sources_cmd=='verify':
                 x=verify_sources()
                 if args.json: print(json.dumps(x,indent=2))
@@ -126,12 +131,39 @@ def main(argv=None):
                         print(f"{d['key']}: {d['name']} | resources={total} | license={_short_meta(d.get('license'))}")
                         print('  '+', '.join(f"{k}={v if v is not None else '?'}" for k,v in counts.items()))
                     print('Inventory only; no Open5e content is enabled or searchable by Archie.')
-            elif args.sources_cmd=='import':
-                x=import_open5e_document(args.document)
+            elif args.sources_cmd=='acquire':
+                output=(Path(args.output) if args.output else
+                        (settings.sources_dir/'foundry'/'srd-5.2'/'raw'/'foundry-srd-5.2-release-5.2.0.json'
+                         if args.provider=='foundry' else
+                         settings.sources_dir/'cantilux'/'dnd-srd-json'/'raw'/'cantilux-dnd-srd-json-df536fe94c92.json'))
+                x=(acquire_foundry_snapshot(output,Path(args.checkout) if args.checkout else None)
+                   if args.provider=='foundry' else
+                   acquire_cantilux_snapshot(output,Path(args.checkout) if args.checkout else None))
                 if args.json: print(json.dumps(x,indent=2))
+                elif args.provider=='cantilux':
+                    print(f"Acquired pinned Cantilux bundle: {x['snapshot_path']}")
+                    print(f"SHA-256: {x['snapshot_sha256']}\nDocuments: {x['documents']}\nSections: {x['sections']}\nCollections: {x['collections']}\nResources: {x['resources']}")
+                else:
+                    print(f"Built pinned Foundry snapshot: {x['snapshot_path']}")
+                    print(f"SHA-256: {x['snapshot_sha256']}\nFiles observed: {x['upstream_files_observed']}\nRecords: {x['snapshot_records']}")
+                    for pack,counts in x['packs'].items():
+                        print(f"{pack}: files={counts['upstream_files_observed']} records={counts['snapshot_records']} folders={counts['folder_metadata_files']}")
+            elif args.sources_cmd=='import':
+                x=(import_open5e_document(args.document) if args.provider=='open5e'
+                   else (import_foundry_snapshot(Path(args.document)) if args.provider=='foundry'
+                         else import_cantilux_snapshot(Path(args.document))))
+                if args.json: print(json.dumps(x,indent=2))
+                elif args.provider in ('foundry','cantilux'):
+                    print(f"Imported {x['source_id']} as non-searchable structured content.")
+                    print(f"Revision: {x['upstream_revision']}\nSHA-256: {x['content_sha256']}\nRecords: {x['content_records']}\nEvidence chunks: 0")
+                    diag=x['diagnostics']
+                    print(f"Observed: {diag['observed']}\nAccepted: {diag['accepted']}\nRejected non-WotC: {diag['rejected_non_wotc']}\nInvalid provenance: {diag['invalid_provenance']}\nNormalization failures: {diag['normalization_failures']}")
+                    print(f"{args.provider.title()} remains unavailable to answer retrieval in alpha.5.1.")
                 else:
                     print(f"Imported {x['source_id']} as local structured content.")
                     print(f"Version: {x['version']}\nSHA-256: {x['content_sha256']}\nRecords: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}")
+                    diag=x['diagnostics']
+                    print(f"Observed: {diag['observed']}\nAccepted: {diag['accepted']}\nRejected non-WotC: {diag['rejected_non_wotc']}\nInvalid provenance: {diag['invalid_provenance']}\nNormalization failures: {diag['normalization_failures']}")
                     print(f"Approved: no\nEnabled: no\nLicense status: {x['license_status']}")
                     print('Import does not grant authority. Open5e content remains unavailable to answer retrieval in alpha.5.')
             elif args.sources_cmd=='approve':
