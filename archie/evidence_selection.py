@@ -17,6 +17,7 @@ def rank_evidence(candidates: list[dict], intent: str) -> list[dict]:
     kinds = {kind: i for i, kind in enumerate(order)}
     return sorted(candidates, key=lambda row: (
         kinds.get(row.get("evidence_kind"), len(kinds)),
+        row.get("text_length", 0),
         row.get("normalized_digest", ""),
         row.get("representation_id", ""),
         row.get("evidence_id", ""),

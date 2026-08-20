@@ -20,7 +20,6 @@ QUARANTINED = (
 
 @pytest.mark.parametrize(("source_id", "manifest_path"), QUARANTINED)
 @pytest.mark.parametrize(("changes", "message"), [
-    ({}, "ingestion-only"),
     ({"representation_id": None}, "lacks representation_id"),
     ({"representation_id": "open5e:srd-2024"}, "cannot claim representation"),
     ({"representation_id": "wotc:official-srd-5.2.1"}, "cannot claim representation"),
@@ -28,7 +27,7 @@ QUARANTINED = (
     ({"authority_id": "unknown:authority"}, "Unknown authority_id"),
     ({"id": "contradictory:source"}, "cannot claim representation"),
 ])
-def test_quarantined_source_enablement_fails_before_any_state_change(
+def test_invalid_representation_enablement_fails_before_any_state_change(
         monkeypatch, source_id, manifest_path, changes, message):
     manifest = replace(load_source_manifest(Path(manifest_path)), **changes)
     raw = {

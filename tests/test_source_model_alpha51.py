@@ -52,7 +52,7 @@ def test_committed_manifests_add_provenance_without_changing_legacy_identity():
     assert (cantilux.id, cantilux.authority_type) == ("cantilux:dnd-srd-json", "approved_supplement")
     assert cantilux.authority_id == "wotc:srd-5.2.1"
     assert cantilux.representation_id == "cantilux:dnd-srd-json"
-    assert cantilux.enabled is False
+    assert cantilux.enabled is True
     assert len(cantilux.upstream_revision) == 40
 
 

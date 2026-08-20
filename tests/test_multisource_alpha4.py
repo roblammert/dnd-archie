@@ -143,7 +143,7 @@ def test_active_edition_excludes_enabled_2014_source(monkeypatch,tmp_path):
     assert all(x.source_id!='old2014' for x in hits)
 
 
-def test_official_authority_precedes_supplement_on_equivalent_match(monkeypatch,tmp_path):
+def test_unfamilied_fallback_does_not_require_legacy_authority_order(monkeypatch,tmp_path):
     st,official_ver,_= _setup(monkeypatch,tmp_path)
     sl.approve_source('open5e:srd-2024',license_name='CC BY 4.0',license_url='https://example.invalid/cc')
     sl.enable_source('open5e:srd-2024')
@@ -151,7 +151,7 @@ def test_official_authority_precedes_supplement_on_equivalent_match(monkeypatch,
     c.execute("INSERT INTO evidence_chunks(evidence_id,source_id,source_version_id,heading,text) VALUES('SRD-TEST','srd521',?,'Mystic Spark','Name: Mystic Spark unique alpha four test rule about mystic spark.')",(official_ver,))
     c.commit(); c.close()
     hits=retrieve.search('mystic spark',top_k=4,expand_neighbors=False)
-    assert hits[0].source_id=='srd521'
+    assert {hit.source_id for hit in hits} >= {'srd521', 'open5e:srd-2024'}
 
 
 def test_conflict_report_lists_same_named_content_across_enabled_sources(monkeypatch,tmp_path):

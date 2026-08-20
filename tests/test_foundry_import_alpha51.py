@@ -249,10 +249,5 @@ def test_rebuild_rehydration_reapplies_admission(monkeypatch, tmp_path):
     c.close()
 
 
-def test_foundry_cannot_be_enabled_or_materialized(monkeypatch):
-    manifest_path = ROOT / "sources/foundry/srd-5.2/source.yaml"
-    monkeypatch.setattr(source_library, "_manifest_data", lambda source_id: (
-        manifest_path, {"representation_id": "foundry:srd-5.2", "approved": True}
-    ))
-    with pytest.raises(ValueError, match="ingestion-only"):
-        source_library.enable_source(foundry.SOURCE_ID)
+def test_foundry_manifest_is_enabled_for_alpha63():
+    assert load_source_manifest(ROOT / "sources/foundry/srd-5.2/source.yaml").enabled is True

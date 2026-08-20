@@ -114,6 +114,11 @@ def ingest() -> dict:
         restored=rehydrate_open5e_imports(c, now)
         restored_foundry=rehydrate_foundry_imports(c, now)
         restored_cantilux=rehydrate_cantilux_imports(c, now)
+        # Importers remain inventory-safe by default. The rebuild lifecycle then
+        # applies the committed activation state before family eligibility runs.
+        for source_id in ('foundry:srd-5.2', 'cantilux:dnd-srd-json'):
+            enabled = get_source_manifest(source_id).enabled
+            c.execute('UPDATE sources SET enabled=? WHERE id=?', (1 if enabled else 0, source_id))
         corpus_authority=validate_content_authority(c)
         identity=build_identity(c)
         identity_hash=identity_fingerprint(c)

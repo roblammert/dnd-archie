@@ -15,6 +15,22 @@ from .taxonomy import classify
 
 FAMILY_TYPES = frozenset({"entity_summary", "prose_rule", "field", "table", "feature"})
 EVIDENCE_KINDS = frozenset({"pdf_prose", "prose", "structured_record", "structured_field", "table"})
+ACTIVATABLE_REPRESENTATIONS = frozenset({"foundry:srd-5.2", "cantilux:dnd-srd-json"})
+
+
+def set_representation_searchable(c, source_id: str, enabled: bool) -> int:
+    """Atomically toggle eligible family evidence without rebuilding or changing IDs."""
+    c.execute("UPDATE evidence_chunks SET searchable=0 WHERE source_id=?", (source_id,))
+    if enabled:
+        c.execute('''UPDATE evidence_chunks SET searchable=1
+                     WHERE source_id=? AND EXISTS (
+                       SELECT 1 FROM evidence_family_members m
+                       JOIN evidence_families f ON f.id=m.family_id
+                       LEFT JOIN entity_mappings em ON em.content_record_id=evidence_chunks.content_record_id
+                       WHERE m.evidence_chunk_id=evidence_chunks.id
+                         AND coalesce(em.status,'unmapped')<>'ambiguous'
+                     )''', (source_id,))
+    return c.execute("SELECT count(*) FROM evidence_chunks WHERE source_id=? AND searchable=1", (source_id,)).fetchone()[0]
 
 
 def _slug(value: str) -> str:
@@ -248,13 +264,28 @@ def build_evidence_families(c) -> dict:
 
     refresh_conflicts(c)
     _finalize_member_roles(c)
+    # Alpha.6.3 ambiguity policy is representation-independent: ambiguous
+    # observations never enter ordinary retrieval, including legacy Open5e rows.
+    c.execute('''UPDATE evidence_chunks SET searchable=0
+                 WHERE content_record_id IN (
+                   SELECT content_record_id FROM entity_mappings WHERE status='ambiguous'
+                 )''')
+    for source_id in sorted(ACTIVATABLE_REPRESENTATIONS):
+        enabled = c.execute("SELECT enabled FROM sources WHERE id=?", (source_id,)).fetchone()
+        if enabled:
+            set_representation_searchable(c, source_id, bool(enabled[0]))
     return evidence_report(c) | {"created_quarantined": created, "attached_existing": attached}
 
 
 def evidence_fingerprint(c) -> dict:
     chunks = [dict(r) for r in c.execute("""SELECT ec.evidence_id,cr.representation_id,cr.upstream_id,cr.upstream_path,
-                                                    ec.heading,ec.text,ec.evidence_kind,ec.searchable
+                                                    ec.heading,ec.text,ec.evidence_kind,
+                                                    CASE
+                                                      WHEN cr.representation_id IN ('foundry:srd-5.2','cantilux:dnd-srd-json') THEN 0
+                                                      WHEN cr.representation_id='open5e:srd-2024' AND em.status='ambiguous' THEN 1
+                                                      ELSE ec.searchable END searchable
                                              FROM evidence_chunks ec LEFT JOIN content_records cr ON cr.id=ec.content_record_id
+                                             LEFT JOIN entity_mappings em ON em.content_record_id=cr.id
                                              ORDER BY ec.evidence_id""")]
     families = [dict(r) for r in c.execute("SELECT * FROM evidence_families ORDER BY id")]
     members = [dict(r) for r in c.execute("""SELECT efm.family_id,ec.evidence_id,efm.representation_id,efm.evidence_role,

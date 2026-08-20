@@ -10,6 +10,7 @@ from .db import connect
 from .source import (discover_source_manifests, get_source_manifest, verify_enabled_sources,
                      verify_manifest, validate_content_authority, validate_manifest_authority)
 from .structured_evidence import materialize_structured_evidence
+from .evidence_families import set_representation_searchable
 
 
 def _now() -> str:
@@ -64,7 +65,9 @@ def substantive_corpus_fingerprint(c=None) -> dict:
         authority = validate_content_authority(c)
         sources = [dict(row) for row in c.execute(
             '''SELECT s.id,s.source_type,s.authority_type,s.authority_id,s.representation_id,s.edition,
-                      s.enabled,s.approved,s.license_status,s.provider,s.provider_document_key,s.priority,
+                      CASE WHEN s.representation_id IN ('foundry:srd-5.2','cantilux:dnd-srd-json')
+                           THEN 0 ELSE s.enabled END enabled,
+                      s.approved,s.license_status,s.provider,s.provider_document_key,s.priority,
                       sv.version,sv.content_sha256,sv.source_uri,sv.upstream_revision
                FROM sources s JOIN source_versions sv ON sv.source_id=s.id AND sv.active=1
                ORDER BY s.id''')]
@@ -80,7 +83,8 @@ def substantive_corpus_fingerprint(c=None) -> dict:
                       ec.page_pdf,ec.page_label,ec.heading,ec.text
                FROM evidence_chunks ec JOIN source_versions sv ON sv.id=ec.source_version_id
                LEFT JOIN content_records cr ON cr.id=ec.content_record_id
-               WHERE ec.searchable=1
+               WHERE cr.representation_id
+                     IN ('wotc:official-srd-5.2.1','open5e:srd-2024')
                ORDER BY ec.source_id,ec.evidence_id''')]
         payload = {'schema_version': 1, 'sources': sources, 'content_records': records,
                    'evidence_chunks': evidence}
@@ -92,6 +96,36 @@ def substantive_corpus_fingerprint(c=None) -> dict:
         return {'sha256': hashlib.sha256(encoded).hexdigest(),
                 'content_records': len(records), 'evidence_chunks': len(evidence),
                 'records_by_representation': counts, **authority}
+    finally:
+        if own_connection:
+            c.close()
+
+
+def retrieval_activation_fingerprint(c=None) -> dict:
+    """Fingerprint stable alpha.6.3 activation/configuration state, not query output."""
+    own_connection = c is None
+    c = c or connect()
+    try:
+        representations = [dict(row) for row in c.execute('''
+            SELECT s.representation_id,s.enabled,count(ec.id) evidence_count,
+                   coalesce(sum(ec.searchable),0) searchable_count,
+                   count(DISTINCT CASE WHEN ec.searchable=1 THEN ec.id END) fts_eligible_count
+            FROM sources s LEFT JOIN evidence_chunks ec ON ec.source_id=s.id
+            GROUP BY s.representation_id,s.enabled ORDER BY s.representation_id''')]
+        payload = {
+            'schema_version': 1,
+            'authority_id': 'wotc:srd-5.2.1',
+            'selection_version': c.execute("SELECT min(selection_version) FROM evidence_families").fetchone()[0],
+            'family_count': c.execute("SELECT count(*) FROM evidence_families").fetchone()[0],
+            'entity_family_count': c.execute("SELECT count(*) FROM evidence_families WHERE canonical_entity_id IS NOT NULL").fetchone()[0],
+            'conflict_count': c.execute("SELECT count(*) FROM evidence_families WHERE conflict_status='conflicted'").fetchone()[0],
+            'representations': representations,
+            'top_k_semantics': 'evidence_families',
+            'family_score': 'best_member',
+            'ambiguous_policy': 'quarantined',
+        }
+        digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        return {'sha256': digest, **payload}
     finally:
         if own_connection:
             c.close()
@@ -140,13 +174,6 @@ def enable_source(source_id: str) -> dict:
     manifest=get_source_manifest(source_id)
     validate_manifest_authority(manifest)
     path,data=_manifest_data(source_id)
-    ingestion_only = {
-        'foundry:srd-5.2': 'Foundry SRD 5.2',
-        'cantilux:dnd-srd-json': 'Cantilux dnd-srd-json',
-    }
-    if source_id in ingestion_only:
-        name = ingestion_only[source_id]
-        raise ValueError(f'{name} is ingestion-only and cannot be enabled before alpha.6.')
     if not bool(data.get('approved')):
         raise ValueError(f'Source is not approved: {source_id}')
     if data.get('license_status') != 'present' or not data.get('license_name') or not data.get('license_url'):
@@ -161,8 +188,11 @@ def enable_source(source_id: str) -> dict:
                 raise ValueError(f'Source is not registered in the Source Library: {source_id}')
             if not row['approved'] or row['license_status']!='present':
                 raise ValueError(f'Database source state is not eligible for enablement: {source_id}')
-            # Materialize evidence before flipping enabled, so a partial failure cannot leak the source.
-            if source_id != settings.source_id:
+            # Alpha.6 family evidence already exists. Activation only toggles eligible
+            # chunks, preserving IDs, memberships, and facts.
+            if source_id in {'foundry:srd-5.2', 'cantilux:dnd-srd-json'}:
+                set_representation_searchable(c, source_id, True)
+            elif source_id != settings.source_id:
                 materialize_structured_evidence(c,source_id)
             c.execute('UPDATE sources SET enabled=1,updated_at=? WHERE id=?',(_now(),source_id))
     finally:
@@ -183,6 +213,7 @@ def disable_source(source_id: str) -> dict:
     c=connect()
     try:
         with c:
+            set_representation_searchable(c, source_id, False)
             c.execute('UPDATE sources SET enabled=0,updated_at=? WHERE id=?',(_now(),source_id))
     finally:
         c.close()

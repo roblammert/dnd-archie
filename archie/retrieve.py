@@ -10,6 +10,7 @@ from .concepts import ALIASES, CONCEPTS
 from .config import settings
 from .db import connect
 from .source import get_source_manifest, verify_source
+from .evidence_selection import rank_evidence
 
 
 STOPWORDS = {
@@ -113,6 +114,12 @@ class Evidence:
     content_type: str | None = None
     record_name: str | None = None
     source_priority: int = 0
+    authority_id: str | None = None
+    representation_id: str | None = None
+    canonical_entity_id: str | None = None
+    evidence_family_id: str | None = None
+    evidence_kind: str | None = None
+    conflict_status: str = "clear"
 
     def to_dict(self):
         return asdict(self)
@@ -125,6 +132,8 @@ class QueryPlan:
     concepts: list[str]
     aliases: list[str]
     subqueries: list[str]
+    intent: str = "general"
+    entity_names: list[str] = field(default_factory=list)
 
     def to_dict(self):
         return asdict(self)
@@ -285,7 +294,22 @@ def build_query_plan(q: str) -> QueryPlan:
         concepts=concepts,
         aliases=aliases,
         subqueries=subqueries,
+        intent=_query_intent(q),
     )
+
+
+def _query_intent(q: str) -> str:
+    """Small, deterministic evidence-kind heuristic; uncertainty stays general."""
+    lower = q.lower()
+    if re.search(r"\b(table|chart|list|progression)\b", lower):
+        return "table"
+    if re.search(r"\b(features?|subclass features?|class features?)\b", lower):
+        return "feature"
+    if re.search(r"\b(range|casting time|duration|damage|cost|weight|armor class|\bac\b|hit points|\bhp\b|speed)\b", lower):
+        return "field"
+    if re.search(r"\b(explain|explanation|how does|what happens|why|describe)\b", lower):
+        return "explanation"
+    return "general"
 
 
 def _escape(term: str) -> str:
@@ -293,6 +317,30 @@ def _escape(term: str) -> str:
         '"',
         '""',
     )
+
+
+def _add_exact_entity_subqueries(c, plan: QueryPlan) -> None:
+    """Add canonical display names explicitly present in the query; never fuzzy."""
+    lower = plan.original.lower()
+    normalized_query = re.sub(r"[^a-z0-9]+", " ", lower).strip()
+    names = []
+    field_labels = {"armor class", "hit points", "casting time", "range", "duration",
+                    "components", "damage", "cost", "weight", "speed", "school", "level"}
+    for row in c.execute("SELECT DISTINCT display_name FROM canonical_entities ORDER BY length(display_name) DESC,display_name"):
+        name = (row[0] or "").strip()
+        normalized_name = re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
+        alternate = ""
+        if "," in name:
+            base, qualifier = (part.strip().lower() for part in name.split(",", 1))
+            alternate = f"{qualifier} {base}"
+        if normalized_name not in field_labels and len(name) >= 3 and (
+            re.search(rf"\b{re.escape(name.lower())}\b", lower)
+            or normalized_name == normalized_query
+            or alternate == normalized_query
+        ):
+            names.append(name.lower())
+    plan.entity_names = list(dict.fromkeys(names))[:8]
+    plan.subqueries = list(dict.fromkeys(plan.subqueries + plan.entity_names))
 
 
 def _fts_or(
@@ -375,8 +423,11 @@ def _fetch_fts(
           cr.content_type,
           cr.name AS record_name,
           s.authority_type,
+          s.authority_id,
+          s.representation_id,
           s.edition,
           s.priority,
+          c.evidence_kind,
           bm25(
               evidence_fts,
               0.0,
@@ -404,10 +455,33 @@ def _fetch_fts(
       LIMIT ?
     """
 
-    return c.execute(
+    rows = c.execute(
         sql,
         tuple(params),
     ).fetchall()
+    if not rows:
+        return []
+
+    # Load family metadata once after FTS has limited raw chunks. Joining the
+    # many-family relation inside the FTS query multiplies rows before LIMIT and
+    # is particularly expensive for broad structured-record matches.
+    ids = [row["id"] for row in rows]
+    placeholders = ",".join("?" for _ in ids)
+    memberships = {}
+    for member in c.execute(f"""SELECT m.evidence_chunk_id,m.family_id,m.normalized_digest,
+                                        f.canonical_entity_id,f.conflict_status,f.family_type,f.semantic_key
+                                 FROM evidence_family_members m JOIN evidence_families f ON f.id=m.family_id
+                                 WHERE m.evidence_chunk_id IN ({placeholders})
+                                 ORDER BY m.evidence_chunk_id,m.family_id""", ids):
+        memberships.setdefault(member["evidence_chunk_id"], []).append(dict(member))
+    expanded = []
+    empty = {"family_id": None, "normalized_digest": None, "canonical_entity_id": None,
+             "conflict_status": None, "family_type": None, "semantic_key": None}
+    for row in rows:
+        base = dict(row)
+        for member in memberships.get(row["id"], [empty]):
+            expanded.append(base | member)
+    return expanded
 
 
 def _score_row(
@@ -423,15 +497,20 @@ def _score_row(
         -float(row["rank"]),
     )
 
-    # Source priority remains a modest relevance tie-breaker,
-    # not the mechanism that enforces authority representation.
-    score += (
-        max(
-            0.0,
-            float(row["priority"]) - 70.0,
-        )
-        / 20.0
-    )
+    record_name = (row["record_name"] or "").strip().lower()
+    if record_name and re.search(rf"\b{re.escape(record_name)}\b", plan.original.lower()):
+        score += 6.0
+    if "," in record_name:
+        base, qualifier = (part.strip() for part in record_name.split(",", 1))
+        reordered = f"{qualifier} {base}"
+        if reordered and re.search(rf"\b{re.escape(reordered)}\b", plan.original.lower()):
+            score += 10.0
+    # Preserve explicit enhancement modifiers that the general token filter
+    # intentionally drops as one-character terms (for example, +1/+2/+3).
+    requested_modifiers = set(re.findall(r"\+\s*([0-9]+)\b", plan.original.lower()))
+    record_modifiers = set(re.findall(r"\+\s*([0-9]+)\b", record_name))
+    if requested_modifiers and record_modifiers:
+        score += 8.0 if requested_modifiers & record_modifiers else -4.0
 
     for term in plan.terms:
         if term in text:
@@ -669,7 +748,8 @@ def _collect_candidates(
         candidate_k,
         authority_types=authority_types,
     ):
-        candidates[row["id"]] = (
+        key = (row["id"], row["family_id"] or "")
+        candidates[key] = (
             row,
             _score_row(
                 row,
@@ -702,14 +782,11 @@ def _collect_candidates(
                 tag,
             )
 
-            old = candidates.get(
-                row["id"]
-            )
+            key = (row["id"], row["family_id"] or "")
+            old = candidates.get(key)
 
             if old:
-                candidates[
-                    row["id"]
-                ] = (
+                candidates[key] = (
                     row,
                     max(
                         old[1],
@@ -723,9 +800,7 @@ def _collect_candidates(
                     ),
                 )
             else:
-                candidates[
-                    row["id"]
-                ] = (
+                candidates[key] = (
                     row,
                     score,
                     [tag],
@@ -955,7 +1030,150 @@ def _candidate_to_evidence(
             row["priority"]
             or 0
         ),
+        authority_id=row["authority_id"],
+        representation_id=row["representation_id"],
+        canonical_entity_id=row["canonical_entity_id"],
+        evidence_family_id=row["family_id"],
+        evidence_kind=row["evidence_kind"],
+        conflict_status=row["conflict_status"],
     )
+
+
+def _family_aware_select(ranked, plan: QueryPlan, top_k: int):
+    """Budget families, never representation matches; choose one suited member."""
+    families = {}
+    for item in ranked:
+        row, score, matched = item
+        semantic_key = (row["semantic_key"] or "").replace("_", " ").lower()
+        semantic_requested = bool(
+            semantic_key
+            and re.search(rf"\b{re.escape(semantic_key)}\b", plan.original.lower())
+        )
+        # A retained field discrepancy blocks only a query that requests that
+        # field. It must not poison unrelated claims about the same entity.
+        if row["conflict_status"] == "conflicted" and not semantic_requested:
+            continue
+        if semantic_requested:
+            score += 8.0
+            item = (row, score, matched)
+        preferred_family = {
+            "field": "field", "explanation": "prose_rule",
+            "table": "table", "feature": "feature",
+        }.get(plan.intent)
+        if preferred_family and row["family_type"] == preferred_family:
+            score += 12.0 if plan.intent == "feature" else 6.0
+            item = (row, score, matched)
+        type_hints = {
+            "class": "/class/", "spell": "/spell/", "monster": "/monster/",
+            "species": "/species/", "equipment": "/equipment/",
+            "rule": "/rule/", "magic item": "/magic-item/",
+        }
+        entity_id = row["canonical_entity_id"] or ""
+        for cue, segment in type_hints.items():
+            if re.search(rf"\b{re.escape(cue)}s?\b", plan.original.lower()) and segment in entity_id:
+                score += 6.0
+                item = (row, score, matched)
+                break
+        key = row["family_id"] or f"isolated:{row['representation_id']}:{row['evidence_id']}"
+        families.setdefault(key, []).append(item)
+
+    selected_families = []
+    for key, members in families.items():
+        ranked_members = rank_evidence([
+            {
+                "item": item,
+                "evidence_id": item[0]["evidence_id"],
+                "evidence_kind": item[0]["evidence_kind"],
+                "text_length": len(item[0]["text"] or ""),
+                "normalized_digest": item[0]["normalized_digest"] or "",
+                "representation_id": item[0]["representation_id"],
+            }
+            for item in members
+        ], plan.intent)
+        chosen = ranked_members[0]["item"]
+        family_score = max(item[1] for item in members)
+        # Member kind controls selection; family relevance is still its best FTS hit.
+        chosen = (chosen[0], family_score, chosen[2])
+        entity = chosen[0]["canonical_entity_id"] or key
+        selected_families.append((chosen, entity, key))
+
+    selected_families.sort(key=lambda value: (-value[0][1], value[2], value[0][0]["evidence_id"]))
+    if top_k <= 0:
+        return []
+
+    # When alternatives exist, no canonical entity may consume the full budget.
+    entity_count = len({value[1] for value in selected_families})
+    entity_cap = top_k if entity_count <= 1 else max(1, (top_k + 1) // 2)
+    normalized_query = re.sub(r"[^a-z0-9]+", " ", plan.original.lower()).strip()
+    focus_entity = None
+    if selected_families:
+        top_row = selected_families[0][0][0]
+        normalized_name = re.sub(r"[^a-z0-9]+", " ", (top_row["record_name"] or "").lower()).strip()
+        if normalized_name and normalized_name == normalized_query:
+            focus_entity = selected_families[0][1]
+
+    def cap_for(entity):
+        return top_k if entity == focus_entity else entity_cap
+    counts = {}
+    table_counts = {}
+    table_cap = top_k if plan.intent == "table" else min(2, entity_cap)
+    selected = []
+    selected_keys = set()
+    deferred = []
+    # Preserve one family for each deterministic exact concept/alias bridge.
+    for subquery in plan.subqueries:
+        tag = f"exact:{subquery}"
+        exact = [value for value in selected_families
+                 if value[2] not in selected_keys and tag in value[0][2]]
+        requested_field = next((value for value in exact
+                                if plan.intent == "field" and value[0][0]["family_type"] == "field"
+                                and (value[0][0]["semantic_key"] or "").replace("_", " ").lower()
+                                in plan.original.lower()), None)
+        if requested_field:
+            match = requested_field
+        elif subquery in plan.entity_names:
+            named = [value for value in exact
+                     if (value[0][0]["record_name"] or "").lower() == subquery
+                     and value[0][0]["family_id"] is not None]
+            preferred = {"table": "table", "feature": "feature", "explanation": "prose_rule"}.get(plan.intent)
+            preferred_match = next((value for value in named if value[0][0]["family_type"] == preferred), None)
+            match = (preferred_match if preferred else
+                     (named[0] if named else (exact[0] if exact else None)))
+        else:
+            # Historical PDF chunks without deterministic family links retain one
+            # exact-concept fallback slot (and therefore their neighbor context).
+            match = next((value for value in exact
+                          if value[0][0]["page_pdf"] is not None and value[0][0]["family_id"] is None),
+                         exact[0] if exact else None)
+        if match and len(selected) < top_k:
+            chosen, entity, key = match
+            selected.append(chosen)
+            selected_keys.add(key)
+            counts[entity] = counts.get(entity, 0) + 1
+            if chosen[0]["family_type"] == "table":
+                table_counts[entity] = table_counts.get(entity, 0) + 1
+    for chosen, entity, key in selected_families:
+        if len(selected) >= top_k:
+            break
+        if key in selected_keys:
+            continue
+        if counts.get(entity, 0) >= cap_for(entity):
+            deferred.append((chosen, entity))
+            continue
+        if chosen[0]["family_type"] == "table" and table_counts.get(entity, 0) >= table_cap:
+            deferred.append((chosen, entity))
+            continue
+        selected.append(chosen)
+        selected_keys.add(key)
+        counts[entity] = counts.get(entity, 0) + 1
+        if chosen[0]["family_type"] == "table":
+            table_counts[entity] = table_counts.get(entity, 0) + 1
+    if len(selected) < top_k:
+        for chosen, entity in deferred:
+            if len(selected) >= top_k:
+                break
+            selected.append(chosen)
+    return selected
 
 
 def search(
@@ -990,6 +1208,7 @@ def search(
 
     try:
         _verify_index(c)
+        _add_exact_entity_subqueries(c, plan)
 
         official_ranked = (
             _collect_candidates(
@@ -1013,13 +1232,13 @@ def search(
             )
         )
 
-        selected = (
-            _merge_authority_candidates(
-                official_ranked,
-                supplemental_ranked,
-                plan,
-                final_k,
-            )
+        # Legacy authority_type pools are retained only as an input compatibility
+        # boundary. All active representations share one authority and are budgeted
+        # together by evidence family.
+        selected = _family_aware_select(
+            official_ranked + supplemental_ranked,
+            plan,
+            final_k,
         )
 
         evidence = []
@@ -1041,9 +1260,8 @@ def search(
                 row["id"]
             )
 
-            primary_ids.append(
-                row["id"]
-            )
+            if row["page_pdf"] is not None:
+                primary_ids.append(row["id"])
 
         if (
             expand_neighbors
@@ -1072,8 +1290,11 @@ def search(
                         cr.content_type,
                         cr.name AS record_name,
                         s.authority_type,
+                        s.authority_id,
+                        s.representation_id,
                         s.edition,
-                        s.priority
+                        s.priority,
+                        c.evidence_kind
                     FROM evidence_chunks c
                     JOIN sources s
                         ON s.id = c.source_id
@@ -1084,6 +1305,8 @@ def search(
                         AND s.enabled = 1
                         AND s.approved = 1
                         AND s.license_status = 'present'
+                        AND c.searchable = 1
+                        AND c.page_pdf IS NOT NULL
                         AND (
                             s.edition IS NULL
                             OR s.edition = ?
@@ -1151,6 +1374,9 @@ def search(
                                 row["priority"]
                                 or 0
                             ),
+                            authority_id=row["authority_id"],
+                            representation_id=row["representation_id"],
+                            evidence_kind=row["evidence_kind"],
                         )
                     )
 
@@ -1282,11 +1508,35 @@ def detect_evidence_conflicts(
     represented in the active evidence packet.
     """
 
+    family_conflicts = {}
+    for item in items:
+        if item.origin == "primary" and item.evidence_family_id and item.conflict_status == "conflicted":
+            family_conflicts[item.evidence_family_id] = {
+                "content_type": item.content_type or "field",
+                "name": item.record_name or item.heading,
+                "source_ids": [],
+                "authorities": [item.authority_id or "wotc:srd-5.2.1"],
+                "evidence_family_id": item.evidence_family_id,
+            }
+    if family_conflicts:
+        c = connect()
+        try:
+            for family_id, conflict in family_conflicts.items():
+                conflict["source_ids"] = [row[0] for row in c.execute(
+                    """SELECT DISTINCT ec.source_id FROM evidence_family_members m
+                       JOIN evidence_chunks ec ON ec.id=m.evidence_chunk_id
+                       WHERE m.family_id=? ORDER BY ec.source_id""", (family_id,)
+                )]
+        finally:
+            c.close()
+        return list(family_conflicts.values())
+
     structured = [
         item
         for item in items
         if (
             item.origin == "primary"
+            and not item.evidence_family_id
             and item.content_type
             and item.record_name
         )

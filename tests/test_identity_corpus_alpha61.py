@@ -22,15 +22,15 @@ def test_real_corpus_identity_and_frozen_substantive_fingerprint():
         c.close()
 
 
-def test_foundry_and_cantilux_remain_quarantined_and_unindexed():
+def test_foundry_and_cantilux_activation_preserves_identity_corpus():
     c = connect()
     try:
         for representation in ("foundry:srd-5.2", "cantilux:dnd-srd-json"):
             source = c.execute("SELECT id,enabled FROM sources WHERE representation_id=?", (representation,)).fetchone()
-            assert source["enabled"] == 0
-            assert c.execute("SELECT count(*) FROM evidence_chunks WHERE source_id=? AND searchable=0", (source["id"],)).fetchone()[0] > 0
+            assert source["enabled"] == 1
+            assert c.execute("SELECT count(*) FROM evidence_chunks WHERE source_id=? AND searchable=1", (source["id"],)).fetchone()[0] > 0
             assert c.execute("""SELECT count(DISTINCT v.doc) FROM evidence_fts_vocab v JOIN evidence_chunks e ON e.id=v.doc
-                                WHERE e.source_id=?""", (source["id"],)).fetchone()[0] == 0
+                                WHERE e.source_id=?""", (source["id"],)).fetchone()[0] > 0
     finally:
         c.close()
 

@@ -68,15 +68,15 @@ def test_diagnostic_selection_uses_kind_before_provider():
     assert rank_evidence(candidates, "explanation")[0]["evidence_id"] == "a"
 
 
-def test_real_corpus_quarantine_identity_and_fingerprints():
+def test_real_corpus_activation_preserves_alpha62_identity_and_fingerprints():
     c = connect()
     try:
         for representation in ("foundry:srd-5.2", "cantilux:dnd-srd-json"):
             source = c.execute("SELECT id,enabled FROM sources WHERE representation_id=?", (representation,)).fetchone()
-            assert source["enabled"] == 0
-            assert c.execute("SELECT count(*) FROM evidence_chunks WHERE source_id=? AND searchable=0", (source["id"],)).fetchone()[0] > 0
+            assert source["enabled"] == 1
+            assert c.execute("SELECT count(*) FROM evidence_chunks WHERE source_id=? AND searchable=1", (source["id"],)).fetchone()[0] > 0
             assert c.execute("""SELECT count(DISTINCT v.doc) FROM evidence_fts_vocab v
-                                JOIN evidence_chunks ec ON ec.id=v.doc WHERE ec.source_id=?""", (source["id"],)).fetchone()[0] == 0
+                                JOIN evidence_chunks ec ON ec.id=v.doc WHERE ec.source_id=?""", (source["id"],)).fetchone()[0] > 0
         assert identity_fingerprint(c)["sha256"] == FROZEN_ALPHA61
         assert substantive_corpus_fingerprint(c)["sha256"] == FROZEN_ALPHA51
         first = evidence_fingerprint(c)

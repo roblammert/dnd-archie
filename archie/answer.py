@@ -596,9 +596,8 @@ def _build_audit_user(
         f"FORCED UNRESOLVED PREMISE: "
         f"{forced_premise or '(none)'}\n"
         f"EVIDENCE SOURCE MODE: {evidence_mode}\n"
-        "SOURCE AUTHORITY POLICY: official_srd outranks "
-        "approved_supplement on overlap; supplemental-only claims "
-        "are allowed when fully supported.\n\n"
+        "SOURCE AUTHORITY POLICY: all evidence representations derive from the "
+        "single SRD 5.2.1 authority; never treat representation count as votes.\n\n"
         f"CHARACTER DATA:\n{character_text or '(none)'}\n\n"
         f"EVIDENCE PACKET:\n{packet}"
         f"\n\nPLAYER-FACING ANSWER:\n{obj['answer']}"
@@ -766,7 +765,7 @@ def ask(question: str, character_text: str|None=None, strict_audit: bool|None=No
     user=(f"QUESTION:\n{question}\n\nPREMISE MODE: {mode}\nABSENCE-INFERENCE GUARD: {'ACTIVE' if absence_guard else 'INACTIVE'}\n"
           f"FORCED UNRESOLVED PREMISE: {forced_premise or '(none)'}\n"
           f"EVIDENCE SOURCE MODE: {evidence_mode}\n"
-          "SOURCE AUTHORITY POLICY: official_srd outranks approved_supplement on overlap. Use supplemental evidence when it is the only approved evidence that establishes the requested fact. Do not invent a conflict, silently merge differing rules, or cite retrieved sources that are not actually needed by the answer.\n"
+          "SOURCE AUTHORITY POLICY: all evidence representations derive from the single SRD 5.2.1 authority. Do not treat representation count as votes, invent a conflict, silently merge differing rules, or cite retrieved evidence that is not actually needed by the answer.\n"
           "If PREMISE MODE is NONE, premises MUST be []. If REQUIRED, classify only the material proposition the player asserted or presupposed; do not classify supplied character data, numeric inputs, or the interrogative itself as a premise. If FORCED UNRESOLVED PREMISE is present, that exact proposition must remain UNRESOLVED; do not assert it or its negation.\n"
           f"\nCHARACTER DATA (facts about the player character only):\n{character_text or '(none)'}\n\nEVIDENCE PACKET:\n{packet}")
     available={e.evidence_id for e in evidence}
