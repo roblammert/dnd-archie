@@ -162,21 +162,36 @@ def test_table_progression_intent_loads_tables_without_displacing_explanations()
     assert search("explain Sorcerer", 5, expand_neighbors=False)[0].evidence_kind == "prose"
 
 
+@pytest.mark.parametrize("query", (
+    "Show me the Sorcerer progression table.",
+    "Sorcerer class table.",
+    "Sorcerer progression.",
+))
+def test_sorcerer_progression_selects_the_unified_class_table_first(query):
+    first = search(query, 5, expand_neighbors=False)[0]
+    assert first.evidence_id == "CAN-SORCERER-9CDE7E69A664"
+    assert '"Proficiency Bonus"' in first.text
+    assert '"Class Features"' in first.text
+
+
 def test_all_representations_are_one_internal_authority():
     evidence = search("explain Fireball", top_k=5, expand_neighbors=False)
     assert {item.authority_id for item in evidence} == {"wotc:srd-5.2.1"}
     mode, uses = source_usage(evidence, None)
-    assert mode == "official_only"
+    assert mode == "single_authority"
     assert len(uses) == 1
     assert uses[0].source_id == "wotc:srd-5.2.1"
     assert uses[0].representation_ids
 
 
 @pytest.mark.parametrize("representations", (
+    ("wotc:official-srd-5.2.1",),
+    ("open5e:srd-2024",),
     ("foundry:srd-5.2",),
     ("cantilux:dnd-srd-json",),
     ("foundry:srd-5.2", "open5e:srd-2024"),
     ("wotc:official-srd-5.2.1", "cantilux:dnd-srd-json"),
+    ("wotc:official-srd-5.2.1", "open5e:srd-2024", "foundry:srd-5.2", "cantilux:dnd-srd-json"),
 ))
 def test_player_provenance_collapses_representation_combinations_to_one_authority(representations):
     evidence = [Evidence(f"E-{index}", None, None, "Test", "Test", 1,
@@ -184,7 +199,7 @@ def test_player_provenance_collapses_representation_combinations_to_one_authorit
                          representation_id=representation)
                 for index, representation in enumerate(representations)]
     mode, uses = source_usage(evidence, [{"evidence_ids": [e.evidence_id for e in evidence]}])
-    assert mode == "official_only"
+    assert mode == "single_authority"
     assert len(uses) == 1 and uses[0].source_id == "wotc:srd-5.2.1"
     assert set(uses[0].representation_ids) == set(representations)
 

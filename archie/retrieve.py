@@ -1159,6 +1159,10 @@ def _family_aware_select(ranked, plan: QueryPlan, top_k: int):
         for name in plan.entity_names
     }
     families = {}
+    progression_table_requested = (
+        plan.intent == "table"
+        and bool(re.search(r"\b(?:class\s+table|progression)\b", plan.original.lower()))
+    )
     for item in ranked:
         row, score, matched = item
         semantic_key = (row["semantic_key"] or "").replace("_", " ").lower()
@@ -1180,6 +1184,15 @@ def _family_aware_select(ranked, plan: QueryPlan, top_k: int):
         }.get(plan.intent)
         if preferred_family and row["family_type"] == preferred_family:
             score += 12.0 if plan.intent == "feature" else 6.0
+            item = (row, score, matched)
+        if progression_table_requested and row["family_type"] == "table":
+            table_text = (row["text"] or "").lower()
+            if (
+                '"level"' in table_text
+                and '"proficiency bonus"' in table_text
+                and '"class features"' in table_text
+            ):
+                score += 30.0
             item = (row, score, matched)
         entity_id = row["canonical_entity_id"] or ""
         entity_type = _entity_type(entity_id)
@@ -1231,6 +1244,24 @@ def _family_aware_select(ranked, plan: QueryPlan, top_k: int):
     selected = []
     selected_keys = set()
     deferred = []
+    if progression_table_requested:
+        progression = next(
+            (
+                value
+                for value in selected_families
+                if value[0][0]["family_type"] == "table"
+                and '"level"' in (value[0][0]["text"] or "").lower()
+                and '"proficiency bonus"' in (value[0][0]["text"] or "").lower()
+                and '"class features"' in (value[0][0]["text"] or "").lower()
+            ),
+            None,
+        )
+        if progression is not None:
+            chosen, entity, key = progression
+            selected.append(chosen)
+            selected_keys.add(key)
+            counts[entity] = 1
+            table_counts[entity] = 1
     # Preserve one family for each deterministic exact concept/alias bridge.
     for subquery in plan.subqueries:
         tag = f"exact:{subquery}"
@@ -1861,6 +1892,8 @@ def evidence_packet(
         parts.append(
             f"[{evidence.evidence_id}] "
             f"source={evidence.source_id} "
+            f"authority_id={evidence.authority_id or '-'} "
+            f"representation_id={evidence.representation_id or '-'} "
             f"authority="
             f"{evidence.authority_type} "
             f"edition="

@@ -28,8 +28,8 @@ def print_answer(r):
         print('\nSources used:')
         for src in r.sources_used:
             evidence_count=len(src.get('evidence_ids',[]))
-            print(f"- {src['source_id']} [{src['authority_type']}, {src.get('edition') or '-'}] — {evidence_count} cited evidence item(s)")
-        print(f"Authority mode: {getattr(r,'source_mode','none')}")
+            print(f"- {src['source_id']} [{src.get('edition') or '-'}] — {evidence_count} cited evidence item(s)")
+        print("Authority: SRD 5.2.1")
     print(f"\nProvenance: {r.reason}")
 
 

@@ -172,11 +172,7 @@ def test_supplemental_only_answer_is_allowed_and_labeled(
         "open5e:srd-2024"
     ]
 
-    assert (
-        "Authority mode: "
-        "supplemental_only."
-        in result.reason
-    )
+    assert "Authority: SRD 5.2.1." in result.reason
 
 
 def test_mixed_answer_reports_only_cited_sources_and_orders_official_first(

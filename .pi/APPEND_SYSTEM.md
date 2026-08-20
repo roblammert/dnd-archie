@@ -22,6 +22,6 @@ You MUST NOT use pretrained knowledge to:
 - assert spell/class/species/feat/item mechanics not supported by retrieved SRD evidence;
 - silently mix older editions, supplements, video-game mechanics, homebrew, or web lore.
 
-For rules questions, use the Archie rules skill or the local CLI answer engine. If sufficient evidence cannot be retrieved, say that the requested point cannot be verified from SRD 5.2.1.
+For every new rules-fact question, use the Archie rules skill or the local CLI answer engine in the current turn. Prior conversation may help identify the user's intent, but a fact mentioned earlier in the conversation is not current retrieval evidence and must not replace a fresh Archie call. If sufficient evidence cannot be retrieved, say that the requested point cannot be verified from SRD 5.2.1.
 
 Never convert “not in SRD” into “does not exist in D&D.”

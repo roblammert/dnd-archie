@@ -82,7 +82,7 @@ def source_usage(evidence: Iterable, claims: list[dict] | None = None) -> tuple[
     if not uses:
         mode = 'none'
     elif authorities == {'official_srd'}:
-        mode = 'official_only'
+        mode = 'single_authority'
     elif 'official_srd' not in authorities:
         mode = 'supplemental_only'
     else:
@@ -94,7 +94,7 @@ def format_source_note(mode: str, sources: list[SourceUse]) -> str:
     if not sources:
         return ''
     labels = ', '.join(
-        f"{s.source_id} [{s.authority_type}{', '+s.edition if s.edition else ''}]"
+        f"{s.source_id}{' ('+s.edition+')' if s.edition else ''}"
         for s in sources
     )
-    return f"Authority mode: {mode}. Sources used: {labels}."
+    return f"Authority: SRD 5.2.1. Sources used: {labels}."
