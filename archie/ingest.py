@@ -7,6 +7,7 @@ from .db import rebuild_database, SCHEMA_VERSION
 from .source import verify_source, get_source_manifest
 from .open5e import rehydrate_open5e_imports
 from .foundry import rehydrate_foundry_imports
+from .cantilux import rehydrate_cantilux_imports
 
 MAX_CHARS=1800
 OVERLAP_PARAGRAPHS=1
@@ -110,10 +111,14 @@ def ingest() -> dict:
         c.executemany('INSERT INTO metadata(key,value) VALUES(?,?)',meta.items())
         restored=rehydrate_open5e_imports(c, now)
         restored_foundry=rehydrate_foundry_imports(c, now)
+        restored_cantilux=rehydrate_cantilux_imports(c, now)
     c.close(); doc.close()
     return ({'ok':True,**meta,'restored_open5e_sources':restored['sources'],
              'restored_open5e_records':restored['content_records'],
              'restored_open5e_diagnostics':restored['diagnostics']}
             | {'restored_foundry_sources':restored_foundry['sources'],
                'restored_foundry_records':restored_foundry['content_records'],
-               'restored_foundry_diagnostics':restored_foundry['diagnostics']})
+               'restored_foundry_diagnostics':restored_foundry['diagnostics'],
+               'restored_cantilux_sources':restored_cantilux['sources'],
+               'restored_cantilux_records':restored_cantilux['content_records'],
+               'restored_cantilux_diagnostics':restored_cantilux['diagnostics']})

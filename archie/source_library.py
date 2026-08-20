@@ -94,8 +94,13 @@ def approve_source(source_id: str, *, license_name: str, license_url: str, note:
 
 def enable_source(source_id: str) -> dict:
     path,data=_manifest_data(source_id)
-    if data.get('representation_id') == 'foundry:srd-5.2':
-        raise ValueError('Foundry SRD 5.2 is ingestion-only and cannot be enabled before alpha.6.')
+    ingestion_only = {
+        'foundry:srd-5.2': 'Foundry SRD 5.2',
+        'cantilux:dnd-srd-json': 'Cantilux dnd-srd-json',
+    }
+    if data.get('representation_id') in ingestion_only:
+        name = ingestion_only[data['representation_id']]
+        raise ValueError(f'{name} is ingestion-only and cannot be enabled before alpha.6.')
     if not bool(data.get('approved')):
         raise ValueError(f'Source is not approved: {source_id}')
     if data.get('license_status') != 'present' or not data.get('license_name') or not data.get('license_url'):

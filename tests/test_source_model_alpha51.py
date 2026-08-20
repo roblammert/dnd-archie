@@ -36,6 +36,7 @@ def test_schema_v5_adds_ingestion_provenance_without_replacing_legacy_fields():
 def test_committed_manifests_add_provenance_without_changing_legacy_identity():
     official = load_source_manifest(ROOT / "sources/srd521/source.yaml")
     open5e = load_source_manifest(ROOT / "sources/open5e/srd-2024/source.yaml")
+    cantilux = load_source_manifest(ROOT / "sources/cantilux/dnd-srd-json/source.yaml")
 
     assert (official.id, official.authority_type) == ("srd521", "official_srd")
     assert official.authority_id == "wotc:srd-5.2.1"
@@ -46,6 +47,12 @@ def test_committed_manifests_add_provenance_without_changing_legacy_identity():
     assert open5e.authority_id == "wotc:srd-5.2.1"
     assert open5e.representation_id == "open5e:srd-2024"
     assert open5e.upstream_revision
+
+    assert (cantilux.id, cantilux.authority_type) == ("cantilux:dnd-srd-json", "approved_supplement")
+    assert cantilux.authority_id == "wotc:srd-5.2.1"
+    assert cantilux.representation_id == "cantilux:dnd-srd-json"
+    assert cantilux.enabled is False
+    assert len(cantilux.upstream_revision) == 40
 
 
 def test_authority_declaration_lists_one_authority_and_required_representations():

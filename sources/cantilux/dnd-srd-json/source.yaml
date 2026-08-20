@@ -1,0 +1,22 @@
+id: cantilux:dnd-srd-json
+name: Cantilux representation of SRD 5.2.1
+source_type: cantilux_snapshot
+authority_type: approved_supplement
+authority_id: wotc:srd-5.2.1
+representation_id: cantilux:dnd-srd-json
+edition: "2024"
+enabled: false
+approved: true
+license_status: present
+provider: cantilux
+provider_document_key: dnd-srd-json
+priority: 85
+license_name: CC-BY-4.0
+license_url: https://creativecommons.org/licenses/by/4.0/
+homepage_url: https://github.com/Cantilux/dnd-srd-json
+version:
+  version: commit-df536fe94c92
+  filename: raw/cantilux-dnd-srd-json-df536fe94c92.json
+  sha256: 50a65517978e0ea47758c319f1848f7b40b609784fb2cf7b09079d66a0ecb219
+  source_uri: https://github.com/Cantilux/dnd-srd-json/blob/df536fe94c92cff49cc531f7283f6995b881fefa/data/srd.json
+  upstream_revision: df536fe94c92cff49cc531f7283f6995b881fefa
