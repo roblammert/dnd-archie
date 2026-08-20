@@ -80,6 +80,69 @@ def load_source_manifest(path: Path) -> SourceManifest:
         manifest_path=path,
     )
 
+def load_authority_declaration(path: Path | None = None) -> dict[str, set[str]]:
+    path = path or settings.sources_dir / 'wotc-srd-5.2.1.yaml'
+    data = _load_yaml(path)
+    authority = data.get('authority')
+    representations = data.get('representations')
+    authority_id = authority.get('id') if isinstance(authority, dict) else None
+    if not isinstance(authority_id, str) or not authority_id.strip():
+        raise SourceIntegrityError(f"Authority declaration {path} lacks authority.id")
+    if not isinstance(representations, list):
+        raise SourceIntegrityError(f"Authority declaration {path} lacks representations")
+    representation_ids: set[str] = set()
+    for item in representations:
+        representation_id = item.get('id') if isinstance(item, dict) else None
+        if not isinstance(representation_id, str) or not representation_id.strip():
+            raise SourceIntegrityError(f"Authority declaration {path} has malformed representation metadata")
+        if representation_id in representation_ids:
+            raise SourceIntegrityError(f"Authority declaration {path} repeats representation: {representation_id}")
+        representation_ids.add(representation_id)
+    if not representation_ids:
+        raise SourceIntegrityError(f"Authority declaration {path} declares no representations")
+    return {authority_id: representation_ids}
+
+def validate_manifest_authority(manifest: SourceManifest) -> None:
+    declarations = load_authority_declaration()
+    if not manifest.authority_id:
+        raise SourceIntegrityError(f"Source manifest {manifest.manifest_path} lacks authority_id")
+    if manifest.authority_id not in declarations:
+        raise SourceIntegrityError(f"Unknown authority_id for {manifest.id}: {manifest.authority_id}")
+    if not manifest.representation_id:
+        raise SourceIntegrityError(f"Source manifest {manifest.manifest_path} lacks representation_id")
+    if manifest.representation_id not in declarations[manifest.authority_id]:
+        raise SourceIntegrityError(
+            f"Representation {manifest.representation_id} is not declared for authority {manifest.authority_id}"
+        )
+
+def validate_content_authority(c) -> dict:
+    declarations = load_authority_declaration()
+    allowed = {(authority_id, representation_id)
+               for authority_id, representations in declarations.items()
+               for representation_id in representations}
+    rows = c.execute(
+        '''SELECT cr.id,cr.source_id,cr.authority_id,cr.representation_id,
+                  s.authority_id AS source_authority_id,s.representation_id AS source_representation_id
+           FROM content_records cr JOIN sources s ON s.id=cr.source_id'''
+    ).fetchall()
+    observed_authorities: set[str] = set()
+    observed_representations: set[str] = set()
+    for row in rows:
+        pair = (row['authority_id'], row['representation_id'])
+        if pair not in allowed:
+            raise SourceIntegrityError(
+                f"Content record {row['id']} from {row['source_id']} has undeclared authority/representation: "
+                f"{row['authority_id']}/{row['representation_id']}"
+            )
+        if pair != (row['source_authority_id'], row['source_representation_id']):
+            raise SourceIntegrityError(
+                f"Content record {row['id']} provenance does not match source {row['source_id']}"
+            )
+        observed_authorities.add(row['authority_id'])
+        observed_representations.add(row['representation_id'])
+    return {'content_records': len(rows), 'authority_ids': sorted(observed_authorities),
+            'representation_ids': sorted(observed_representations)}
+
 def discover_source_manifests() -> list[SourceManifest]:
     if not settings.sources_dir.exists(): return []
     return [load_source_manifest(path) for path in sorted(settings.sources_dir.rglob('source.yaml'))]
@@ -98,6 +161,7 @@ def load_manifest():
             'approved':m.approved,'priority':m.priority}
 
 def verify_manifest(manifest: SourceManifest) -> dict:
+    validate_manifest_authority(manifest)
     path=manifest.content_path
     if not path.exists(): raise SourceIntegrityError(f"Missing approved source: {path}")
     actual=sha256_file(path)

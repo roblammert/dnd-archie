@@ -1,11 +1,14 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
+import hashlib
+import json
 import yaml
 
 from .config import settings
 from .db import connect
-from .source import discover_source_manifests, get_source_manifest, verify_enabled_sources, verify_manifest
+from .source import (discover_source_manifests, get_source_manifest, verify_enabled_sources,
+                     verify_manifest, validate_content_authority)
 from .structured_evidence import materialize_structured_evidence
 
 
@@ -51,6 +54,46 @@ def show_source(source_id: str) -> dict:
 def verify_sources() -> dict:
     items=verify_enabled_sources()
     return {'ok':all(x['ok'] for x in items),'enabled_count':len(items),'sources':items}
+
+
+def substantive_corpus_fingerprint(c=None) -> dict:
+    """Hash sorted semantic source, record, and evidence data, excluding SQLite mechanics."""
+    own_connection = c is None
+    c = c or connect()
+    try:
+        authority = validate_content_authority(c)
+        sources = [dict(row) for row in c.execute(
+            '''SELECT s.id,s.source_type,s.authority_type,s.authority_id,s.representation_id,s.edition,
+                      s.enabled,s.approved,s.license_status,s.provider,s.provider_document_key,s.priority,
+                      sv.version,sv.content_sha256,sv.source_uri,sv.upstream_revision
+               FROM sources s JOIN source_versions sv ON sv.source_id=s.id AND sv.active=1
+               ORDER BY s.id''')]
+        records = [dict(row) for row in c.execute(
+            '''SELECT cr.source_id,sv.version,sv.content_sha256,sv.upstream_revision,cr.external_id,
+                      cr.content_type,cr.name,cr.edition,cr.authority_id,cr.representation_id,
+                      cr.upstream_id,cr.upstream_path,cr.normalization_schema_version,cr.structured_json
+               FROM content_records cr JOIN source_versions sv ON sv.id=cr.source_version_id
+               ORDER BY cr.source_id,cr.content_type,cr.upstream_id,cr.upstream_path,cr.external_id,cr.name,cr.structured_json''')]
+        evidence = [dict(row) for row in c.execute(
+            '''SELECT ec.evidence_id,ec.source_id,sv.version,sv.content_sha256,sv.upstream_revision,
+                      cr.upstream_id AS content_upstream_id,cr.upstream_path AS content_upstream_path,
+                      ec.page_pdf,ec.page_label,ec.heading,ec.text
+               FROM evidence_chunks ec JOIN source_versions sv ON sv.id=ec.source_version_id
+               LEFT JOIN content_records cr ON cr.id=ec.content_record_id
+               ORDER BY ec.source_id,ec.evidence_id''')]
+        payload = {'schema_version': 1, 'sources': sources, 'content_records': records,
+                   'evidence_chunks': evidence}
+        encoded = json.dumps(payload, sort_keys=True, separators=(',', ':'),
+                             ensure_ascii=False).encode('utf-8')
+        counts = {row['representation_id']: row['n'] for row in c.execute(
+            '''SELECT representation_id,count(*) AS n FROM content_records
+               GROUP BY representation_id ORDER BY representation_id''')}
+        return {'sha256': hashlib.sha256(encoded).hexdigest(),
+                'content_records': len(records), 'evidence_chunks': len(evidence),
+                'records_by_representation': counts, **authority}
+    finally:
+        if own_connection:
+            c.close()
 
 
 def _manifest_data(source_id: str) -> tuple[Path,dict]:

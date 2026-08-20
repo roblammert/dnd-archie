@@ -35,13 +35,27 @@ def _connect(path: Path):
     return c
 
 
+def _authority_declaration(root: Path):
+    path = root/'sources'/'wotc-srd-5.2.1.yaml'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump({
+        'schema_version': 1,
+        'authority': {'id': 'wotc:srd-5.2.1'},
+        'representations': [
+            {'id': 'wotc:official-srd-5.2.1'}, {'id': 'open5e:srd-2024'},
+            {'id': 'foundry:srd-5.2'}, {'id': 'cantilux:dnd-srd-json'},
+        ],
+    }, sort_keys=False), encoding='utf-8')
+
+
 def _manifest(root: Path, source_id: str, *, approved=False, enabled=False, license_status='missing', edition='2024', priority=80):
     d=root/'sources'/'open5e'/'srd-2024'; d.mkdir(parents=True,exist_ok=True)
     raw=d/'raw.json'; raw.write_text('{"provider":"open5e","document_key":"srd-2024","resources":{},"content_sha256":"abc"}\n')
     sha=hashlib.sha256(raw.read_bytes()).hexdigest()
     data={
         'id':source_id,'name':'System Reference Document 5.2','source_type':'open5e_snapshot',
-        'authority_type':'approved_supplement','edition':edition,'enabled':enabled,'approved':approved,
+        'authority_type':'approved_supplement','authority_id':'wotc:srd-5.2.1',
+        'representation_id':'open5e:srd-2024','edition':edition,'enabled':enabled,'approved':approved,
         'license_status':license_status,'provider':'open5e','provider_document_key':'srd-2024','priority':priority,
         'license_name':'CC BY 4.0' if license_status=='present' else None,
         'license_url':'https://example.invalid/license' if license_status=='present' else None,
@@ -54,6 +68,7 @@ def _manifest(root: Path, source_id: str, *, approved=False, enabled=False, lice
 
 def _setup(monkeypatch,tmp_path: Path):
     st=_settings(tmp_path)
+    _authority_declaration(tmp_path)
     for mod in (dbmod,sourcemod,sl,retrieve):
         monkeypatch.setattr(mod,'settings',st)
     c=_connect(st.database); c.executescript(SCHEMA)
@@ -163,27 +178,32 @@ def test_rehydrate_restores_enabled_approved_source_with_evidence(monkeypatch,tm
     import archie.open5e as o5
     st=_settings(tmp_path)
     st.open5e_import_dir=tmp_path/'sources'/'open5e'
+    _authority_declaration(tmp_path)
     monkeypatch.setattr(dbmod,'settings',st)
     monkeypatch.setattr(sourcemod,'settings',st)
     monkeypatch.setattr(o5,'settings',st)
     source_dir=tmp_path/'sources'/'open5e'/'srd-2024'; source_dir.mkdir(parents=True,exist_ok=True)
     raw=source_dir/'raw.json'
     payload={
-        'provider':'open5e','document_key':'srd-2024','content_sha256':'content-test',
+        'provider':'open5e','document_key':'srd-2024',
         'resources':{'spells':[
             {'key':'spark','name':'Spark','desc':'A rebuild persistence test spell.','document':{'key':'srd-2024'}},
             {'key':'other','name':'Other','document':{'key':'third-party'}},
             {'key':'missing','name':'Missing'},
         ]}
     }
+    content_sha=hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    payload['content_sha256']=content_sha
     raw.write_text(json.dumps(payload)+'\n')
     sha=hashlib.sha256(raw.read_bytes()).hexdigest()
     manifest={
         'id':'open5e:srd-2024','name':'System Reference Document 5.2','source_type':'open5e_snapshot',
-        'authority_type':'approved_supplement','edition':'2024','enabled':True,'approved':True,
+        'authority_type':'approved_supplement','authority_id':'wotc:srd-5.2.1',
+        'representation_id':'open5e:srd-2024','edition':'2024','enabled':True,'approved':True,
         'license_status':'present','provider':'open5e','provider_document_key':'srd-2024','priority':80,
         'license_name':'CC BY 4.0','license_url':'https://example.invalid/cc',
-        'version':{'version':'test','filename':'raw.json','sha256':sha,'source_uri':'https://api.open5e.test/v2/'},
+        'version':{'version':'test','filename':'raw.json','sha256':sha,
+                   'upstream_revision':content_sha,'source_uri':'https://api.open5e.test/v2/'},
     }
     (source_dir/'source.yaml').write_text(yaml.safe_dump(manifest,sort_keys=False))
     c=_connect(st.database); c.executescript(SCHEMA)

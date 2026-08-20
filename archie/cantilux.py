@@ -278,6 +278,8 @@ def import_cantilux_snapshot(
     if (not isinstance(upstream_revision, str) or len(upstream_revision) != 40
             or any(c not in "0123456789abcdef" for c in upstream_revision)):
         raise CantiluxError("Cantilux import requires an immutable lowercase Git commit")
+    if upstream_revision != UPSTREAM_REVISION:
+        raise CantiluxError("Cantilux import revision is not the pinned upstream commit")
     content_sha = hashlib.sha256(raw_bytes).hexdigest()
     now = imported_at or datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     own_connection = connection is None
@@ -324,7 +326,7 @@ def import_cantilux_snapshot(
 
 
 def rehydrate_cantilux_imports(c, imported_at: str | None = None) -> dict[str, Any]:
-    from .source import discover_source_manifests, sha256_file
+    from .source import discover_source_manifests, verify_manifest
 
     totals = {key: 0 for key in DIAGNOSTIC_KEYS}
     sources = records = 0
@@ -332,8 +334,7 @@ def rehydrate_cantilux_imports(c, imported_at: str | None = None) -> dict[str, A
     for manifest in discover_source_manifests():
         if manifest.source_type != "cantilux_snapshot":
             continue
-        if sha256_file(manifest.content_path) != manifest.sha256:
-            raise CantiluxError(f"Stored Cantilux snapshot hash mismatch: {manifest.id}")
+        verify_manifest(manifest)
         if manifest.upstream_revision != UPSTREAM_REVISION:
             raise CantiluxError("Stored Cantilux snapshot revision is not the pinned upstream commit")
         result = import_cantilux_snapshot(

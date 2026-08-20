@@ -133,6 +133,11 @@ def test_unknown_repository_or_mutable_revision_fails_closed(tmp_path):
     bad["upstream_revision"] = "release-5.2.0"
     with pytest.raises(FoundryError, match="immutable"):
         import_foundry_snapshot(_write(tmp_path, bad), connection=_connection())
+    bad = _snapshot([_entry()])
+    bad["upstream_revision"] = "a" * 40
+    bad["content_sha256"] = foundry._content_hash(bad)
+    with pytest.raises(FoundryError, match="pinned upstream commit"):
+        import_foundry_snapshot(_write(tmp_path, bad), connection=_connection())
 
 
 def test_committed_foundry_manifest_is_pinned_and_legacy_compatible():

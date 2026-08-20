@@ -95,6 +95,14 @@ def test_import_accepts_corpus_provenance_and_preserves_record_provenance(tmp_pa
     c.close()
 
 
+def test_changed_pinned_revision_fails_closed(tmp_path):
+    with pytest.raises(CantiluxError, match="pinned upstream commit"):
+        import_cantilux_snapshot(
+            _write(tmp_path, _snapshot()), connection=_connection(),
+            upstream_revision="a" * 40,
+        )
+
+
 @pytest.mark.parametrize(("key", "value"), [
     ("srdVersion", "5.1"), ("rulesRevision", "2014"),
     ("license", "OGL-1.0a"), ("name", "unexpected-corpus"),

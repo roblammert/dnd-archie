@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pymupdf
 from .config import settings
 from .db import rebuild_database, SCHEMA_VERSION
-from .source import verify_source, get_source_manifest
+from .source import verify_source, get_source_manifest, validate_content_authority
 from .open5e import rehydrate_open5e_imports
 from .foundry import rehydrate_foundry_imports
 from .cantilux import rehydrate_cantilux_imports
@@ -112,6 +112,7 @@ def ingest() -> dict:
         restored=rehydrate_open5e_imports(c, now)
         restored_foundry=rehydrate_foundry_imports(c, now)
         restored_cantilux=rehydrate_cantilux_imports(c, now)
+        corpus_authority=validate_content_authority(c)
     c.close(); doc.close()
     return ({'ok':True,**meta,'restored_open5e_sources':restored['sources'],
              'restored_open5e_records':restored['content_records'],
@@ -121,4 +122,5 @@ def ingest() -> dict:
                'restored_foundry_diagnostics':restored_foundry['diagnostics'],
                'restored_cantilux_sources':restored_cantilux['sources'],
                'restored_cantilux_records':restored_cantilux['content_records'],
-               'restored_cantilux_diagnostics':restored_cantilux['diagnostics']})
+               'restored_cantilux_diagnostics':restored_cantilux['diagnostics'],
+               'corpus_authority':corpus_authority})

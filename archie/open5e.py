@@ -162,6 +162,13 @@ def _canonical_json(data: Any) -> bytes:
     return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
+def _stored_snapshot_content_hash(raw: dict[str, Any]) -> str:
+    payload = dict(raw)
+    payload.pop('imported_at', None)
+    payload.pop('content_sha256', None)
+    return hashlib.sha256(_canonical_json(payload)).hexdigest()
+
+
 def _snapshot_path(stamp: str) -> Path:
     return settings.open5e_discovery_dir / f"open5e-discovery-{stamp}.json"
 
@@ -445,7 +452,7 @@ def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, Any
     Persistent storage is the source manifest plus raw JSON snapshot. SQLite is
     generated and can be rebuilt without losing imported content. Enabled, approved imports have evidence chunks reconstructed in alpha.5.
     """
-    from .source import discover_source_manifests
+    from .source import discover_source_manifests, verify_manifest
 
     now = imported_at or datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     restored_sources = 0
@@ -462,12 +469,17 @@ def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, Any
     for manifest in discover_source_manifests():
         if manifest.source_type != 'open5e_snapshot':
             continue
+        verify_manifest(manifest)
         raw = json.loads(manifest.content_path.read_text(encoding='utf-8'))
         if raw.get('provider') != 'open5e' or raw.get('document_key') != manifest.provider_document_key:
             raise Open5eError(f"Invalid stored Open5e snapshot for {manifest.id}")
         content_sha = str(raw.get('content_sha256') or '')
         if not content_sha:
             raise Open5eError(f"Stored Open5e snapshot lacks content_sha256: {manifest.id}")
+        if content_sha != _stored_snapshot_content_hash(raw):
+            raise Open5eError(f"Stored Open5e snapshot content SHA-256 mismatch: {manifest.id}")
+        if manifest.upstream_revision != content_sha:
+            raise Open5eError(f"Stored Open5e snapshot revision does not match canonical content: {manifest.id}")
 
         c.execute(
             '''INSERT INTO sources(id,name,source_type,authority_type,authority_id,representation_id,edition,enabled,approved,license_status,provider,provider_document_key,

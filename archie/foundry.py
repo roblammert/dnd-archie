@@ -305,6 +305,8 @@ def _validate_snapshot(snapshot: Any, *, revision: str | None = None) -> dict[st
     upstream = snapshot.get("upstream_revision")
     if not isinstance(upstream, str) or len(upstream) != 40 or any(c not in "0123456789abcdef" for c in upstream):
         raise FoundryError("Foundry snapshot requires an immutable lowercase Git commit")
+    if upstream != UPSTREAM_REVISION:
+        raise FoundryError("Foundry snapshot revision is not the pinned upstream commit")
     if revision is not None and upstream != revision:
         raise FoundryError("Foundry snapshot revision does not match its source manifest")
     manifest = snapshot.get("system_manifest")
@@ -364,15 +366,14 @@ def import_foundry_snapshot(path: Path, *, connection=None, imported_at: str | N
 
 
 def rehydrate_foundry_imports(c, imported_at: str | None = None) -> dict[str, Any]:
-    from .source import discover_source_manifests, sha256_file
+    from .source import discover_source_manifests, verify_manifest
 
     totals = {key: 0 for key in DIAGNOSTIC_KEYS}
     sources = records = 0
     for manifest in discover_source_manifests():
         if manifest.source_type != "foundry_snapshot":
             continue
-        if sha256_file(manifest.content_path) != manifest.sha256:
-            raise FoundryError(f"Stored Foundry snapshot hash mismatch: {manifest.id}")
+        verify_manifest(manifest)
         raw = json.loads(manifest.content_path.read_text(encoding="utf-8"))
         _validate_snapshot(raw, revision=manifest.upstream_revision)
         result = import_foundry_snapshot(manifest.content_path, connection=c, imported_at=imported_at)
