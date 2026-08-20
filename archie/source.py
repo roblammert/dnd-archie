@@ -83,6 +83,11 @@ def load_source_manifest(path: Path) -> SourceManifest:
 def load_authority_declaration(path: Path | None = None) -> dict[str, dict[str, str]]:
     path = path or settings.sources_dir / 'wotc-srd-5.2.1.yaml'
     data = _load_yaml(path)
+    schema_version = data.get('schema_version')
+    if type(schema_version) is not int or schema_version != 1:
+        raise SourceIntegrityError(
+            f"Authority declaration {path} has unsupported schema_version: {schema_version!r}; expected 1"
+        )
     authority = data.get('authority')
     representations = data.get('representations')
     authority_id = authority.get('id') if isinstance(authority, dict) else None

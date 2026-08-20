@@ -481,21 +481,52 @@ def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, Any
         if manifest.upstream_revision != content_sha:
             raise Open5eError(f"Stored Open5e snapshot revision does not match canonical content: {manifest.id}")
 
+        existing = c.execute("SELECT id FROM sources WHERE id=?", (manifest.id,)).fetchone()
+        source_values = (
+            manifest.name, manifest.source_type, manifest.authority_type, manifest.authority_id,
+            manifest.representation_id, manifest.edition, 1 if manifest.enabled else 0,
+            1 if manifest.approved else 0, manifest.license_status, manifest.provider,
+            manifest.provider_document_key, manifest.priority, manifest.license_name,
+            manifest.license_url, manifest.homepage_url,
+        )
+        if existing:
+            c.execute(
+                '''UPDATE sources SET name=?,source_type=?,authority_type=?,authority_id=?,representation_id=?,edition=?,
+                   enabled=?,approved=?,license_status=?,provider=?,provider_document_key=?,priority=?,license_name=?,license_url=?,
+                   homepage_url=?,updated_at=? WHERE id=?''',
+                (*source_values, now, manifest.id),
+            )
+        else:
+            c.execute(
+                '''INSERT INTO sources(id,name,source_type,authority_type,authority_id,representation_id,edition,enabled,approved,license_status,provider,provider_document_key,
+                   priority,license_name,license_url,homepage_url,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                (manifest.id, *source_values, now, now),
+            )
+        active = c.execute(
+            "SELECT id,content_sha256 FROM source_versions WHERE source_id=? AND active=1",
+            (manifest.id,),
+        ).fetchone()
+        if active and active['content_sha256'] == content_sha:
+            version_id = active['id']
+            c.execute(
+                '''UPDATE source_versions SET version=?,source_uri=?,filename=?,upstream_revision=? WHERE id=?''',
+                (manifest.version, manifest.source_uri, manifest.filename, manifest.upstream_revision, version_id),
+            )
+        else:
+            c.execute("UPDATE source_versions SET active=0 WHERE source_id=? AND active=1", (manifest.id,))
+            cur = c.execute(
+                '''INSERT INTO source_versions(source_id,version,imported_at,content_sha256,source_uri,filename,upstream_revision,active)
+                   VALUES(?,?,?,?,?,?,?,1)''',
+                (manifest.id, manifest.version, now, content_sha, manifest.source_uri,
+                 manifest.filename, manifest.upstream_revision),
+            )
+            version_id = cur.lastrowid
+        c.execute("DELETE FROM evidence_chunks WHERE source_id=?", (manifest.id,))
         c.execute(
-            '''INSERT INTO sources(id,name,source_type,authority_type,authority_id,representation_id,edition,enabled,approved,license_status,provider,provider_document_key,
-               priority,license_name,license_url,homepage_url,created_at,updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-            (manifest.id, manifest.name, manifest.source_type, manifest.authority_type, manifest.authority_id, manifest.representation_id, manifest.edition,
-             1 if manifest.enabled else 0, 1 if manifest.approved else 0,
-             manifest.license_status, manifest.provider, manifest.provider_document_key, manifest.priority,
-             manifest.license_name, manifest.license_url, manifest.homepage_url, now, now),
+            "DELETE FROM content_records WHERE source_id=? AND source_version_id=?",
+            (manifest.id, version_id),
         )
-        cur = c.execute(
-            '''INSERT INTO source_versions(source_id,version,imported_at,content_sha256,source_uri,filename,upstream_revision,active)
-               VALUES(?,?,?,?,?,?,?,1)''',
-            (manifest.id, manifest.version, now, content_sha, manifest.source_uri, manifest.filename, manifest.upstream_revision),
-        )
-        version_id = cur.lastrowid
         resources = raw.get('resources') or {}
         source_diagnostics = _normalize_open5e_resources(
             c, source_id=manifest.id, source_version_id=version_id,

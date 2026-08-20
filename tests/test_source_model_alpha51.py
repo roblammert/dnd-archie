@@ -1,10 +1,11 @@
 from pathlib import Path
 import sqlite3
 
+import pytest
 import yaml
 
 from archie.db import SCHEMA, SCHEMA_VERSION
-from archie.source import load_source_manifest
+from archie.source import SourceIntegrityError, load_authority_declaration, load_source_manifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,4 +70,36 @@ def test_authority_declaration_lists_one_authority_and_required_representations(
         "open5e:srd-2024": "open5e:srd-2024",
         "foundry:srd-5.2": "foundry:srd-5.2",
         "cantilux:dnd-srd-json": "cantilux:dnd-srd-json",
+    }
+
+
+@pytest.mark.parametrize("schema_version", [pytest.param("missing", id="missing"), None, True, 2, "1"])
+def test_authority_declaration_rejects_unsupported_schema_version(tmp_path, schema_version):
+    declaration = {
+        "authority": {"id": "wotc:srd-5.2.1"},
+        "representations": [
+            {"id": "wotc:official-srd-5.2.1", "source_id": "srd521"},
+        ],
+    }
+    if schema_version != "missing":
+        declaration["schema_version"] = schema_version
+    path = tmp_path / "authority.yaml"
+    path.write_text(yaml.safe_dump(declaration), encoding="utf-8")
+
+    with pytest.raises(SourceIntegrityError, match="unsupported schema_version.*expected 1"):
+        load_authority_declaration(path)
+
+
+def test_authority_declaration_accepts_schema_version_one(tmp_path):
+    path = tmp_path / "authority.yaml"
+    path.write_text(yaml.safe_dump({
+        "schema_version": 1,
+        "authority": {"id": "wotc:srd-5.2.1"},
+        "representations": [
+            {"id": "wotc:official-srd-5.2.1", "source_id": "srd521"},
+        ],
+    }), encoding="utf-8")
+
+    assert load_authority_declaration(path) == {
+        "wotc:srd-5.2.1": {"wotc:official-srd-5.2.1": "srd521"},
     }

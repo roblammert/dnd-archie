@@ -8,7 +8,7 @@ import yaml
 from .config import settings
 from .db import connect
 from .source import (discover_source_manifests, get_source_manifest, verify_enabled_sources,
-                     verify_manifest, validate_content_authority)
+                     verify_manifest, validate_content_authority, validate_manifest_authority)
 from .structured_evidence import materialize_structured_evidence
 
 
@@ -136,13 +136,15 @@ def approve_source(source_id: str, *, license_name: str, license_url: str, note:
 
 
 def enable_source(source_id: str) -> dict:
+    manifest=get_source_manifest(source_id)
+    validate_manifest_authority(manifest)
     path,data=_manifest_data(source_id)
     ingestion_only = {
         'foundry:srd-5.2': 'Foundry SRD 5.2',
         'cantilux:dnd-srd-json': 'Cantilux dnd-srd-json',
     }
-    if data.get('representation_id') in ingestion_only:
-        name = ingestion_only[data['representation_id']]
+    if source_id in ingestion_only:
+        name = ingestion_only[source_id]
         raise ValueError(f'{name} is ingestion-only and cannot be enabled before alpha.6.')
     if not bool(data.get('approved')):
         raise ValueError(f'Source is not approved: {source_id}')
