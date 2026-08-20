@@ -64,3 +64,9 @@ def test_authority_declaration_lists_one_authority_and_required_representations(
         "foundry:srd-5.2",
         "cantilux:dnd-srd-json",
     ]
+    assert {item["id"]: item["source_id"] for item in declaration["representations"]} == {
+        "wotc:official-srd-5.2.1": "srd521",
+        "open5e:srd-2024": "open5e:srd-2024",
+        "foundry:srd-5.2": "foundry:srd-5.2",
+        "cantilux:dnd-srd-json": "cantilux:dnd-srd-json",
+    }

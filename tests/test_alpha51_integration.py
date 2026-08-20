@@ -6,6 +6,7 @@ import pytest
 
 from archie.db import SCHEMA, connect
 from archie.ingest import ingest
+from archie.open5e import rehydrate_open5e_imports
 from archie.source import (
     SourceIntegrityError,
     load_source_manifest,
@@ -110,6 +111,44 @@ def test_malformed_manifest_authority_metadata_fails_closed(field, value, messag
         validate_manifest_authority(replace(manifest, **{field: value}))
 
 
+@pytest.mark.parametrize(("manifest_path", "source_id", "representation_id"), [
+    ("sources/open5e/srd-2024/source.yaml", "open5e:srd-2024", "foundry:srd-5.2"),
+    ("sources/foundry/srd-5.2/source.yaml", "foundry:srd-5.2", "cantilux:dnd-srd-json"),
+    ("sources/cantilux/dnd-srd-json/source.yaml", "cantilux:dnd-srd-json", "wotc:official-srd-5.2.1"),
+    ("sources/open5e/srd-2024/source.yaml", "arbitrary:test", "open5e:srd-2024"),
+])
+def test_declared_representation_cannot_be_spoofed_by_another_source(
+        manifest_path, source_id, representation_id):
+    manifest = load_source_manifest(ROOT / manifest_path)
+    with pytest.raises(SourceIntegrityError, match="cannot claim representation"):
+        validate_manifest_authority(replace(
+            manifest, id=source_id, representation_id=representation_id,
+        ))
+
+
+@pytest.mark.parametrize(("changes", "message"), [
+    ({"authority_id": "third-party:test"}, "Unknown authority_id"),
+    ({"representation_id": "unknown:test"}, "not declared"),
+    ({"representation_id": "foundry:srd-5.2"}, "cannot claim representation"),
+])
+def test_invalid_source_manifest_fails_before_normalized_storage(
+        monkeypatch, changes, message):
+    manifest = replace(
+        load_source_manifest(ROOT / "sources/open5e/srd-2024/source.yaml"),
+        **changes,
+    )
+    monkeypatch.setattr("archie.source.discover_source_manifests", lambda: [manifest])
+    c = _memory_database()
+    try:
+        with pytest.raises(SourceIntegrityError, match=message):
+            rehydrate_open5e_imports(c, "now")
+        assert c.execute("SELECT count(*) FROM content_records").fetchone()[0] == 0
+        assert c.execute("SELECT count(*) FROM evidence_chunks").fetchone()[0] == 0
+        assert c.execute("SELECT count(*) FROM evidence_fts").fetchone()[0] == 0
+    finally:
+        c.close()
+
+
 def test_changed_raw_snapshot_hash_fails_closed(tmp_path):
     original = load_source_manifest(ROOT / "sources/open5e/srd-2024/source.yaml")
     raw = tmp_path / "changed.json"
@@ -121,7 +160,14 @@ def test_changed_raw_snapshot_hash_fails_closed(tmp_path):
         verify_manifest(changed)
 
 
-def test_rejected_or_mismatched_record_cannot_pass_corpus_validation():
+@pytest.mark.parametrize(("record_authority", "record_representation", "message"), [
+    ("third-party:test", "open5e:srd-2024", "undeclared authority/representation"),
+    (None, "open5e:srd-2024", "undeclared authority/representation"),
+    (AUTHORITY_ID, None, "undeclared authority/representation"),
+    (AUTHORITY_ID, "foundry:srd-5.2", "invalid source"),
+])
+def test_rejected_or_mismatched_record_rolls_back_without_leakage(
+        record_authority, record_representation, message):
     c = _memory_database()
     try:
         c.execute(
@@ -134,14 +180,17 @@ def test_rejected_or_mismatched_record_cannot_pass_corpus_validation():
             '''INSERT INTO source_versions(source_id,imported_at,content_sha256,active)
                VALUES('bad','now','hash',1)'''
         ).lastrowid
-        c.execute(
-            '''INSERT INTO content_records(source_id,source_version_id,content_type,authority_id,
-               representation_id,structured_json,created_at)
-               VALUES('bad',?,'rules',?,'foundry:srd-5.2','{}','now')''',
-            (version_id, AUTHORITY_ID),
-        )
-        with pytest.raises(SourceIntegrityError, match="does not match source"):
-            validate_content_authority(c)
+        c.commit()
+        with pytest.raises(SourceIntegrityError, match=message):
+            with c:
+                c.execute(
+                    '''INSERT INTO content_records(source_id,source_version_id,content_type,authority_id,
+                       representation_id,structured_json,created_at)
+                       VALUES('bad',?,'rules',?,?,'{}','now')''',
+                    (version_id, record_authority, record_representation),
+                )
+                validate_content_authority(c)
+        assert c.execute("SELECT count(*) FROM content_records").fetchone()[0] == 0
         assert c.execute("SELECT count(*) FROM evidence_chunks").fetchone()[0] == 0
         assert c.execute("SELECT count(*) FROM evidence_fts").fetchone()[0] == 0
     finally:

@@ -80,7 +80,7 @@ def load_source_manifest(path: Path) -> SourceManifest:
         manifest_path=path,
     )
 
-def load_authority_declaration(path: Path | None = None) -> dict[str, set[str]]:
+def load_authority_declaration(path: Path | None = None) -> dict[str, dict[str, str]]:
     path = path or settings.sources_dir / 'wotc-srd-5.2.1.yaml'
     data = _load_yaml(path)
     authority = data.get('authority')
@@ -90,17 +90,22 @@ def load_authority_declaration(path: Path | None = None) -> dict[str, set[str]]:
         raise SourceIntegrityError(f"Authority declaration {path} lacks authority.id")
     if not isinstance(representations, list):
         raise SourceIntegrityError(f"Authority declaration {path} lacks representations")
-    representation_ids: set[str] = set()
+    representation_sources: dict[str, str] = {}
     for item in representations:
         representation_id = item.get('id') if isinstance(item, dict) else None
+        source_id = item.get('source_id') if isinstance(item, dict) else None
         if not isinstance(representation_id, str) or not representation_id.strip():
             raise SourceIntegrityError(f"Authority declaration {path} has malformed representation metadata")
-        if representation_id in representation_ids:
+        if not isinstance(source_id, str) or not source_id.strip():
+            raise SourceIntegrityError(f"Authority declaration {path} lacks source binding for {representation_id}")
+        if representation_id in representation_sources:
             raise SourceIntegrityError(f"Authority declaration {path} repeats representation: {representation_id}")
-        representation_ids.add(representation_id)
-    if not representation_ids:
+        if source_id in representation_sources.values():
+            raise SourceIntegrityError(f"Authority declaration {path} repeats source binding: {source_id}")
+        representation_sources[representation_id] = source_id
+    if not representation_sources:
         raise SourceIntegrityError(f"Authority declaration {path} declares no representations")
-    return {authority_id: representation_ids}
+    return {authority_id: representation_sources}
 
 def validate_manifest_authority(manifest: SourceManifest) -> None:
     declarations = load_authority_declaration()
@@ -114,12 +119,18 @@ def validate_manifest_authority(manifest: SourceManifest) -> None:
         raise SourceIntegrityError(
             f"Representation {manifest.representation_id} is not declared for authority {manifest.authority_id}"
         )
+    expected_source_id = declarations[manifest.authority_id][manifest.representation_id]
+    if manifest.id != expected_source_id:
+        raise SourceIntegrityError(
+            f"Source {manifest.id} cannot claim representation {manifest.representation_id}; "
+            f"expected source {expected_source_id}"
+        )
 
 def validate_content_authority(c) -> dict:
     declarations = load_authority_declaration()
-    allowed = {(authority_id, representation_id)
+    allowed = {(authority_id, representation_id): source_id
                for authority_id, representations in declarations.items()
-               for representation_id in representations}
+               for representation_id, source_id in representations.items()}
     rows = c.execute(
         '''SELECT cr.id,cr.source_id,cr.authority_id,cr.representation_id,
                   s.authority_id AS source_authority_id,s.representation_id AS source_representation_id
@@ -133,6 +144,11 @@ def validate_content_authority(c) -> dict:
             raise SourceIntegrityError(
                 f"Content record {row['id']} from {row['source_id']} has undeclared authority/representation: "
                 f"{row['authority_id']}/{row['representation_id']}"
+            )
+        if row['source_id'] != allowed[pair]:
+            raise SourceIntegrityError(
+                f"Content record {row['id']} uses representation {row['representation_id']} "
+                f"through invalid source {row['source_id']}"
             )
         if pair != (row['source_authority_id'], row['source_representation_id']):
             raise SourceIntegrityError(

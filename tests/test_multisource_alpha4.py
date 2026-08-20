@@ -42,8 +42,10 @@ def _authority_declaration(root: Path):
         'schema_version': 1,
         'authority': {'id': 'wotc:srd-5.2.1'},
         'representations': [
-            {'id': 'wotc:official-srd-5.2.1'}, {'id': 'open5e:srd-2024'},
-            {'id': 'foundry:srd-5.2'}, {'id': 'cantilux:dnd-srd-json'},
+            {'id': 'wotc:official-srd-5.2.1', 'source_id': 'srd521'},
+            {'id': 'open5e:srd-2024', 'source_id': 'open5e:srd-2024'},
+            {'id': 'foundry:srd-5.2', 'source_id': 'foundry:srd-5.2'},
+            {'id': 'cantilux:dnd-srd-json', 'source_id': 'cantilux:dnd-srd-json'},
         ],
     }, sort_keys=False), encoding='utf-8')
 
