@@ -99,7 +99,7 @@ def main(argv=None):
                 x=show_source(args.source_id)
                 if args.json: print(json.dumps(x,indent=2))
                 else:
-                    print(f"Source: {x['name']}\nID: {x['id']}\nType: {x['source_type']}\nAuthority: {x['authority_type']}\nEdition: {x['edition'] or '-'}\nApproved: {'yes' if x['approved'] else 'no'}\nEnabled: {'yes' if x['enabled'] else 'no'}\nLicense status: {x['license_status']}\nProvider: {x.get('provider') or '-'}\nProvider document: {x.get('provider_document_key') or '-'}\nPriority: {x['priority']}\nVersion: {x['version']}\nSnapshot file SHA-256: {x['sha256']}\nCanonical content SHA-256: {x.get('active_content_sha256') or '-'}\nContent records: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}\nStatus: VERIFIED")
+                    print(f"Source: {x['name']}\nID: {x['id']}\nType: {x['source_type']}\nAuthority type: {x['authority_type']}\nAuthority ID: {x.get('authority_id') or '-'}\nRepresentation ID: {x.get('representation_id') or '-'}\nEdition: {x['edition'] or '-'}\nApproved: {'yes' if x['approved'] else 'no'}\nEnabled: {'yes' if x['enabled'] else 'no'}\nLicense status: {x['license_status']}\nProvider: {x.get('provider') or '-'}\nProvider document: {x.get('provider_document_key') or '-'}\nPriority: {x['priority']}\nVersion: {x['version']}\nUpstream revision: {x.get('upstream_revision') or '-'}\nSnapshot file SHA-256: {x['sha256']}\nCanonical content SHA-256: {x.get('active_content_sha256') or '-'}\nContent records: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}\nStatus: VERIFIED")
             elif args.sources_cmd=='verify':
                 x=verify_sources()
                 if args.json: print(json.dumps(x,indent=2))

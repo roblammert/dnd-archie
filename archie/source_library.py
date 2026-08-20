@@ -35,9 +35,10 @@ def list_sources() -> list[dict]:
     for m in discover_source_manifests():
         stats=_db_stats(m.id)
         rows.append({'id':m.id,'name':m.name,'source_type':m.source_type,'authority_type':m.authority_type,
+                     'authority_id':m.authority_id,'representation_id':m.representation_id,
                      'edition':m.edition,'enabled':m.enabled,'approved':m.approved,'license_status':m.license_status,
                      'provider':m.provider,'provider_document_key':m.provider_document_key,'priority':m.priority,
-                     'version':m.version,**stats})
+                     'version':m.version,'upstream_revision':m.upstream_revision,**stats})
     return rows
 
 

@@ -1,0 +1,12 @@
+schema_version: 1
+authority:
+  id: wotc:srd-5.2.1
+  publisher: Wizards of the Coast LLC
+  title: System Reference Document 5.2.1
+  edition: "2024"
+  license: CC-BY-4.0
+representations:
+  - id: wotc:official-srd-5.2.1
+  - id: open5e:srd-2024
+  - id: foundry:srd-5.2
+  - id: cantilux:dnd-srd-json

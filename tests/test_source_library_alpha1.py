@@ -11,6 +11,8 @@ def test_source_library_registers_srd521_as_enabled_official_authority():
     assert 'srd521' in by_id
     src=by_id['srd521']
     assert src['authority_type']=='official_srd'
+    assert src['authority_id']=='wotc:srd-5.2.1'
+    assert src['representation_id']=='wotc:official-srd-5.2.1'
     assert src['edition']=='2024'
     assert src['approved'] is True
     assert src['enabled'] is True
@@ -33,9 +35,13 @@ def test_generic_source_schema_contains_srd_content():
     ingest()
     c=connect()
     try:
-        row=c.execute("SELECT id,authority_type,edition,approved,enabled,license_status FROM sources WHERE id='srd521'").fetchone()
+        row=c.execute("SELECT id,authority_type,authority_id,representation_id,edition,approved,enabled,license_status FROM sources WHERE id='srd521'").fetchone()
         assert row is not None
-        assert tuple(row)==('srd521','official_srd','2024',1,1,'present')
+        assert tuple(row)==('srd521','official_srd','wotc:srd-5.2.1','wotc:official-srd-5.2.1','2024',1,1,'present')
+        version=c.execute("SELECT upstream_revision FROM source_versions WHERE source_id='srd521'").fetchone()
+        assert version['upstream_revision']=='5.2.1'
+        provenance=c.execute("SELECT DISTINCT authority_id,representation_id,normalization_schema_version FROM content_records WHERE source_id='srd521'").fetchall()
+        assert [tuple(x) for x in provenance]==[('wotc:srd-5.2.1','wotc:official-srd-5.2.1',1)]
         assert c.execute("SELECT count(*) FROM source_versions WHERE source_id='srd521'").fetchone()[0]==1
         assert c.execute("SELECT count(*) FROM content_records WHERE source_id='srd521'").fetchone()[0]==364
         assert c.execute("SELECT count(*) FROM evidence_chunks WHERE source_id='srd521'").fetchone()[0]==1067
@@ -58,6 +64,8 @@ def test_source_show_and_verify():
     assert src['integrity']['ok'] is True
     assert src['id']=='srd521'
     assert src['authority_type']=='official_srd'
+    assert src['authority_id']=='wotc:srd-5.2.1'
+    assert src['representation_id']=='wotc:official-srd-5.2.1'
     assert src['edition']=='2024'
     assert src['approved'] is True
     assert src['enabled'] is True
@@ -66,3 +74,6 @@ def test_source_show_and_verify():
     assert result['ok'] is True
     assert result['enabled_count']>=1
     assert 'srd521' in {item['source_id'] for item in result['sources']}
+    official=next(item for item in result['sources'] if item['source_id']=='srd521')
+    assert official['authority_id']=='wotc:srd-5.2.1'
+    assert official['representation_id']=='wotc:official-srd-5.2.1'

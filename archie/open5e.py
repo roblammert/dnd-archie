@@ -241,8 +241,22 @@ def _ensure_alpha3_columns(c) -> None:
         ("license_status", "ALTER TABLE sources ADD COLUMN license_status TEXT NOT NULL DEFAULT 'present'"),
         ("provider", "ALTER TABLE sources ADD COLUMN provider TEXT"),
         ("provider_document_key", "ALTER TABLE sources ADD COLUMN provider_document_key TEXT"),
+        ("authority_id", "ALTER TABLE sources ADD COLUMN authority_id TEXT"),
+        ("representation_id", "ALTER TABLE sources ADD COLUMN representation_id TEXT"),
     ):
         if name not in cols: c.execute(ddl)
+    version_cols={r[1] for r in c.execute("PRAGMA table_info(source_versions)")}
+    if "upstream_revision" not in version_cols:
+        c.execute("ALTER TABLE source_versions ADD COLUMN upstream_revision TEXT")
+    record_cols={r[1] for r in c.execute("PRAGMA table_info(content_records)")}
+    for name, ddl in (
+        ("authority_id", "ALTER TABLE content_records ADD COLUMN authority_id TEXT"),
+        ("representation_id", "ALTER TABLE content_records ADD COLUMN representation_id TEXT"),
+        ("upstream_id", "ALTER TABLE content_records ADD COLUMN upstream_id TEXT"),
+        ("upstream_path", "ALTER TABLE content_records ADD COLUMN upstream_path TEXT"),
+        ("normalization_schema_version", "ALTER TABLE content_records ADD COLUMN normalization_schema_version INTEGER"),
+    ):
+        if name not in record_cols: c.execute(ddl)
 
 
 def _write_import_snapshot(document: Open5eDocument, resources: dict[str, list[dict[str, Any]]], imported_at: str) -> tuple[Path, str, str]:
@@ -266,10 +280,12 @@ def _write_import_manifest(document: Open5eDocument, raw_path: Path, content_sha
     license_status="present" if license_name else "missing"
     manifest={
         "id":f"open5e:{document.key}","name":document.name,"source_type":"open5e_snapshot",
-        "authority_type":"approved_supplement","edition":"2024" if "2024" in (_meta_name(document.game_system) or document.key) else None,
+        "authority_type":"approved_supplement","authority_id":"wotc:srd-5.2.1","representation_id":"open5e:srd-2024",
+        "edition":"2024" if "2024" in (_meta_name(document.game_system) or document.key) else None,
         "enabled":False,"approved":False,"license_status":license_status,"provider":"open5e","provider_document_key":document.key,
         "priority":80,"license_name":license_name,"license_url":license_url,"homepage_url":document.permalink,
         "version":{"version":version,"filename":str(raw_path.relative_to(source_dir)),"sha256":hashlib.sha256(raw_path.read_bytes()).hexdigest(),
+                   "upstream_revision":content_sha,
                    "source_uri":f"{settings.open5e_base_url}/documents/"}
     }
     path=source_dir / "source.yaml"
@@ -297,15 +313,16 @@ def import_open5e_document(document_key: str, client: Open5eClient | None = None
             now=imported_at
             existing=c.execute("SELECT id FROM sources WHERE id=?",(source_id,)).fetchone()
             if existing:
-                c.execute('''UPDATE sources SET name=?,source_type='open5e_snapshot',authority_type='approved_supplement',edition=?,
+                c.execute('''UPDATE sources SET name=?,source_type='open5e_snapshot',authority_type='approved_supplement',
+                             authority_id='wotc:srd-5.2.1',representation_id='open5e:srd-2024',edition=?,
                              enabled=0,approved=0,license_status=?,provider='open5e',provider_document_key=?,priority=80,
                              license_name=?,license_url=?,homepage_url=?,updated_at=? WHERE id=?''',
                           (document.name,"2024" if "2024" in (_meta_name(document.game_system) or document.key) else None,license_status,document_key,
                            license_name,license_url,document.permalink,now,source_id))
             else:
-                c.execute('''INSERT INTO sources(id,name,source_type,authority_type,edition,enabled,approved,license_status,provider,provider_document_key,
-                             priority,license_name,license_url,homepage_url,created_at,updated_at) VALUES(?,?,?,?,?,0,0,?,?,?,?,?,?,?,?,?)''',
-                          (source_id,document.name,'open5e_snapshot','approved_supplement',
+                c.execute('''INSERT INTO sources(id,name,source_type,authority_type,authority_id,representation_id,edition,enabled,approved,license_status,provider,provider_document_key,
+                             priority,license_name,license_url,homepage_url,created_at,updated_at) VALUES(?,?,?,?,?,?,?,0,0,?,?,?,?,?,?,?,?,?)''',
+                          (source_id,document.name,'open5e_snapshot','approved_supplement','wotc:srd-5.2.1','open5e:srd-2024',
                            "2024" if "2024" in (_meta_name(document.game_system) or document.key) else None,license_status,'open5e',document_key,80,
                            license_name,license_url,document.permalink,now,now))
 
@@ -313,16 +330,24 @@ def import_open5e_document(document_key: str, client: Open5eClient | None = None
             unchanged=bool(active and active['content_sha256']==content_sha)
             if unchanged:
                 source_version_id=active['id']; version=active['version']
+                c.execute("UPDATE source_versions SET upstream_revision=? WHERE id=?",(content_sha,source_version_id))
+                c.execute('''UPDATE content_records SET authority_id='wotc:srd-5.2.1',representation_id='open5e:srd-2024',
+                             upstream_id=COALESCE(upstream_id,external_id),
+                             upstream_path=COALESCE(upstream_path,content_type || '/' || external_id),
+                             normalization_schema_version=COALESCE(normalization_schema_version,1)
+                             WHERE source_id=? AND source_version_id=?''',(source_id,source_version_id))
             else:
                 c.execute("UPDATE source_versions SET active=0 WHERE source_id=? AND active=1",(source_id,))
-                cur=c.execute('''INSERT INTO source_versions(source_id,version,imported_at,content_sha256,source_uri,filename,active)
-                                 VALUES(?,?,?,?,?,?,1)''',(source_id,version,now,content_sha,f"{client.base_url}/documents/",str(raw_path.relative_to(settings.root))))
+                cur=c.execute('''INSERT INTO source_versions(source_id,version,imported_at,content_sha256,source_uri,filename,upstream_revision,active)
+                                 VALUES(?,?,?,?,?,?,?,1)''',(source_id,version,now,content_sha,f"{client.base_url}/documents/",str(raw_path.relative_to(settings.root)),content_sha))
                 source_version_id=cur.lastrowid
                 for label, items in resources.items():
                     for idx,obj in enumerate(items,1):
                         ext=_record_external_id(obj,label,idx); name=_record_name(obj,ext)
-                        c.execute('''INSERT INTO content_records(source_id,source_version_id,external_id,content_type,name,edition,structured_json,created_at)
-                                     VALUES(?,?,?,?,?,?,?,?)''',(source_id,source_version_id,ext,label,name,'2024',json.dumps(obj,sort_keys=True,ensure_ascii=False),now))
+                        c.execute('''INSERT INTO content_records(source_id,source_version_id,external_id,content_type,name,edition,authority_id,representation_id,
+                                     upstream_id,upstream_path,normalization_schema_version,structured_json,created_at)
+                                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',(source_id,source_version_id,ext,label,name,'2024','wotc:srd-5.2.1','open5e:srd-2024',
+                                     ext,f'{label}/{ext}',1,json.dumps(obj,sort_keys=True,ensure_ascii=False),now))
             record_count=c.execute("SELECT count(*) FROM content_records WHERE source_id=? AND source_version_id=?",(source_id,source_version_id)).fetchone()[0]
             evidence_count=c.execute("SELECT count(*) FROM evidence_chunks WHERE source_id=?",(source_id,)).fetchone()[0]
     finally:
@@ -357,18 +382,18 @@ def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, int
             raise Open5eError(f"Stored Open5e snapshot lacks content_sha256: {manifest.id}")
 
         c.execute(
-            '''INSERT INTO sources(id,name,source_type,authority_type,edition,enabled,approved,license_status,provider,provider_document_key,
+            '''INSERT INTO sources(id,name,source_type,authority_type,authority_id,representation_id,edition,enabled,approved,license_status,provider,provider_document_key,
                priority,license_name,license_url,homepage_url,created_at,updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-            (manifest.id, manifest.name, manifest.source_type, manifest.authority_type, manifest.edition,
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (manifest.id, manifest.name, manifest.source_type, manifest.authority_type, manifest.authority_id, manifest.representation_id, manifest.edition,
              1 if manifest.enabled else 0, 1 if manifest.approved else 0,
              manifest.license_status, manifest.provider, manifest.provider_document_key, manifest.priority,
              manifest.license_name, manifest.license_url, manifest.homepage_url, now, now),
         )
         cur = c.execute(
-            '''INSERT INTO source_versions(source_id,version,imported_at,content_sha256,source_uri,filename,active)
-               VALUES(?,?,?,?,?,?,1)''',
-            (manifest.id, manifest.version, now, content_sha, manifest.source_uri, manifest.filename),
+            '''INSERT INTO source_versions(source_id,version,imported_at,content_sha256,source_uri,filename,upstream_revision,active)
+               VALUES(?,?,?,?,?,?,?,1)''',
+            (manifest.id, manifest.version, now, content_sha, manifest.source_uri, manifest.filename, manifest.upstream_revision),
         )
         version_id = cur.lastrowid
         resources = raw.get('resources') or {}
@@ -381,10 +406,11 @@ def rehydrate_open5e_imports(c, imported_at: str | None = None) -> dict[str, int
                 ext = _record_external_id(obj, label, idx)
                 name = _record_name(obj, ext)
                 c.execute(
-                    '''INSERT INTO content_records(source_id,source_version_id,external_id,content_type,name,edition,structured_json,created_at)
-                       VALUES(?,?,?,?,?,?,?,?)''',
-                    (manifest.id, version_id, ext, label, name, manifest.edition,
-                     json.dumps(obj, sort_keys=True, ensure_ascii=False), now),
+                    '''INSERT INTO content_records(source_id,source_version_id,external_id,content_type,name,edition,authority_id,representation_id,
+                       upstream_id,upstream_path,normalization_schema_version,structured_json,created_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    (manifest.id, version_id, ext, label, name, manifest.edition, manifest.authority_id, manifest.representation_id,
+                     ext, f'{label}/{ext}', 1, json.dumps(obj, sort_keys=True, ensure_ascii=False), now),
                 )
                 restored_records += 1
         if manifest.enabled:

@@ -66,15 +66,15 @@ def ingest() -> dict:
     c=rebuild_database()
     now=_now()
     with c:
-        c.execute('''INSERT INTO sources(id,name,source_type,authority_type,edition,enabled,approved,license_status,provider,provider_document_key,priority,
+        c.execute('''INSERT INTO sources(id,name,source_type,authority_type,authority_id,representation_id,edition,enabled,approved,license_status,provider,provider_document_key,priority,
                      license_name,license_url,homepage_url,created_at,updated_at)
-                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-                  (manifest.id,manifest.name,manifest.source_type,manifest.authority_type,manifest.edition,
+                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                  (manifest.id,manifest.name,manifest.source_type,manifest.authority_type,manifest.authority_id,manifest.representation_id,manifest.edition,
                    1 if manifest.enabled else 0,1 if manifest.approved else 0,manifest.license_status,manifest.provider,manifest.provider_document_key,
                    manifest.priority,manifest.license_name,manifest.license_url,manifest.homepage_url,now,now))
-        cur=c.execute('''INSERT INTO source_versions(source_id,version,imported_at,content_sha256,source_uri,filename,active)
-                         VALUES(?,?,?,?,?,?,1)''',
-                      (manifest.id,manifest.version,now,integrity['sha256'],manifest.source_uri,manifest.filename))
+        cur=c.execute('''INSERT INTO source_versions(source_id,version,imported_at,content_sha256,source_uri,filename,upstream_revision,active)
+                         VALUES(?,?,?,?,?,?,?,1)''',
+                      (manifest.id,manifest.version,now,integrity['sha256'],manifest.source_uri,manifest.filename,manifest.upstream_revision))
         source_version_id=cur.lastrowid
         total=0; records=0
         for pno,page in enumerate(doc, start=1):
@@ -82,9 +82,12 @@ def ingest() -> dict:
             if not txt: continue
             heading=section_for_page(pno)
             structured=json.dumps({'page_pdf':pno,'page_label':str(pno),'section':heading},sort_keys=True)
-            cur=c.execute('''INSERT INTO content_records(source_id,source_version_id,external_id,content_type,name,edition,structured_json,created_at)
-                             VALUES(?,?,?,?,?,?,?,?)''',
-                          (manifest.id,source_version_id,f'page:{pno}','page',f'PDF page {pno}',manifest.edition,structured,now))
+            upstream_id=f'page:{pno}'
+            cur=c.execute('''INSERT INTO content_records(source_id,source_version_id,external_id,content_type,name,edition,authority_id,representation_id,
+                             upstream_id,upstream_path,normalization_schema_version,structured_json,created_at)
+                             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                          (manifest.id,source_version_id,upstream_id,'page',f'PDF page {pno}',manifest.edition,
+                           manifest.authority_id,manifest.representation_id,upstream_id,f'{manifest.filename}#page={pno}',1,structured,now))
             record_id=cur.lastrowid; records+=1
             for n,chunk in enumerate(split_page(txt),start=1):
                 eid=f"SRD521-P{pno:03d}-C{n:02d}"

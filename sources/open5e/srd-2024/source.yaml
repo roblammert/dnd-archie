@@ -2,6 +2,8 @@ id: open5e:srd-2024
 name: System Reference Document 5.2
 source_type: open5e_snapshot
 authority_type: approved_supplement
+authority_id: wotc:srd-5.2.1
+representation_id: open5e:srd-2024
 edition: '2024'
 enabled: true
 approved: true
@@ -17,6 +19,7 @@ version:
   filename: raw/open5e-srd-2024-20260819T211801Z.json
   sha256: ffe19459cc7b10c8bf5d037b026f2651e820045a935863f66f15b2580dc3512e
   source_uri: https://api.open5e.com/v2/documents/
+  upstream_revision: b6caac3e9527319fcf651820e859fec0e7a11197d4c1128c70e996e8a72d676f
 approval_note: alpha.5 live acceptance explicit approval
 approved_at: '2026-08-20T01:39:08+00:00'
 enabled_at: '2026-08-20T01:39:09+00:00'

@@ -2,7 +2,7 @@ from __future__ import annotations
 import sqlite3
 from .config import settings
 
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "5"
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS sources(
   name TEXT NOT NULL,
   source_type TEXT NOT NULL,
   authority_type TEXT NOT NULL,
+  authority_id TEXT,
+  representation_id TEXT,
   edition TEXT,
   enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
   approved INTEGER NOT NULL DEFAULT 1 CHECK(approved IN (0,1)),
@@ -42,6 +44,7 @@ CREATE TABLE IF NOT EXISTS source_versions(
   content_sha256 TEXT NOT NULL,
   source_uri TEXT,
   filename TEXT,
+  upstream_revision TEXT,
   active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
   FOREIGN KEY(source_id) REFERENCES sources(id) ON DELETE CASCADE
 );
@@ -56,6 +59,11 @@ CREATE TABLE IF NOT EXISTS content_records(
   content_type TEXT NOT NULL,
   name TEXT,
   edition TEXT,
+  authority_id TEXT,
+  representation_id TEXT,
+  upstream_id TEXT,
+  upstream_path TEXT,
+  normalization_schema_version INTEGER,
   structured_json TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY(source_id) REFERENCES sources(id) ON DELETE CASCADE,

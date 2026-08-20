@@ -79,9 +79,15 @@ def test_selective_import_is_disabled_unapproved_and_preserves_raw(monkeypatch,t
     assert 'enabled: false' in manifest
     assert 'approved: false' in manifest
     assert 'license_status: missing' in manifest
+    assert 'authority_id: wotc:srd-5.2.1' in manifest
+    assert 'representation_id: open5e:srd-2024' in manifest
     db=connect_temp()
-    row=db.execute("SELECT enabled,approved,license_status,provider,provider_document_key FROM sources WHERE id='open5e:srd-2024'").fetchone()
-    assert tuple(row)==(0,0,'missing','open5e','srd-2024')
+    row=db.execute("SELECT id,authority_type,authority_id,representation_id,enabled,approved,license_status,provider,provider_document_key FROM sources WHERE id='open5e:srd-2024'").fetchone()
+    assert tuple(row)==('open5e:srd-2024','approved_supplement','wotc:srd-5.2.1','open5e:srd-2024',0,0,'missing','open5e','srd-2024')
+    version=db.execute("SELECT upstream_revision FROM source_versions WHERE source_id='open5e:srd-2024'").fetchone()
+    assert version['upstream_revision']==result['content_sha256']
+    provenance=db.execute("SELECT DISTINCT authority_id,representation_id,normalization_schema_version FROM content_records WHERE source_id='open5e:srd-2024'").fetchall()
+    assert [tuple(x) for x in provenance]==[('wotc:srd-5.2.1','open5e:srd-2024',1)]
     assert db.execute("SELECT count(*) FROM evidence_chunks WHERE source_id='open5e:srd-2024'").fetchone()[0]==0
     db.close()
 
