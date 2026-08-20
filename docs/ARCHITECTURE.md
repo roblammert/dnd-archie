@@ -1,66 +1,36 @@
-# Architecture — v2.0.0-alpha.5.1
+# Architecture — v2.0.0-alpha.6
 
-## Authority and representations
+## One authority, four representations
 
-The sole D&D content authority is WotC SRD 5.2.1 (`wotc:srd-5.2.1`). Authority answers who owns the rules content; representation identifies the pinned machine-readable form. The ingestion topology contains the official PDF, Open5e SRD-2024, Foundry SRD 5.2, and Cantilux dnd-srd-json representations.
+WotC SRD 5.2.1 (`wotc:srd-5.2.1`) is Archie's sole D&D rules authority. The official PDF, Open5e SRD-2024, Foundry SRD 5.2, and Cantilux dnd-srd-json are four auditable representations of that same authority. Provider agreement is not voting, and duplicate representations cannot amplify a score.
 
-Official and Open5e evidence retain alpha.5 retrieval behavior. Foundry and Cantilux records are normalized but quarantined from evidence, FTS, and retrieval until alpha.6. Exact source/representation bindings and importer-specific provenance checks prevent a valid authority label from bypassing admission.
-
-Rebuilds start from pinned artifacts. A substantive corpus fingerprint excludes volatile timestamps and database row IDs so two rebuilds can be compared deterministically across all normalized records.
-
-## Runtime path
+## Evidence path
 
 ```text
-Player / Pi
-   |
-   v
-Archie skill or CLI
-   |
-   +--> verify pinned source hashes and provenance
-   |
-   +--> Retrieval v2 query plan
-   |      - normalize natural language
-   |      - map search-only aliases
-   |      - detect canonical concepts
-   |      - reserve multi-concept coverage
-   |
-   +--> SQLite FTS5 candidate retrieval + deterministic re-ranking
-   |
-   +--> document-order neighbor expansion across page boundaries
-   |
-   +--> evidence packet with immutable IDs
-   |
-   +--> local Gemma answer pass (JSON claims + citations)
-   |
-   +--> deterministic evidence-ID validation
-   |
-   +--> local Gemma evidence-only audit of claims AND answer coverage
-   |
-   +--> fail closed if any claim or answer mechanic is unsupported
-   v
-Player-facing VERIFIED / DERIVED / PARTIAL / NOT_IN_SRD answer
+source observation
+  -> deterministic taxonomy
+  -> canonical entity mapping
+  -> evidence family + allowlisted structured facts
+  -> searchable eligibility
+  -> SQLite FTS candidate
+  -> family aggregation
+  -> entity budgeting
+  -> field/evidence-kind member selection
+  -> conflict gate
+  -> evidence packet, generation, and audit
+  -> answer
 ```
 
-## Why deterministic FTS5 remains the base
+A family represents one comparable claim and scope. Family ranking uses the best eligible member score, not a sum across providers. Retrieval budgets families and entities before selecting the most suitable evidence member. Structured facts are field-specific; a conflict blocks the affected family/claim while unrelated clear fields on the same entity remain usable.
 
-D&D rules contain distinctive named terms, conditions, actions, formulas, and glossary vocabulary. SQLite FTS5 is fast, inspectable, offline, and does not require an embedding model. v1.5 adds deterministic concept-aware ranking around FTS5 rather than delegating query rewriting to the LLM.
+## Identity and fallback
 
-Embeddings may be added later as an additional recall channel, but they must never alter the authority boundary or evidence IDs.
+Structured observations map only when deterministic evidence identifies a canonical SRD entity. Ambiguous observations are quarantined; leaving an observation unmapped is safer than creating a false merge. Deterministic synthetic families allow otherwise eligible unmapped evidence to remain isolated instead of being blended.
 
-## Evidence IDs
+The official PDF is page-oriented. PDF pages remain authoritative evidence containers and retrieval fallback without being forced into canonical structured-entity mappings.
 
-`SRD521-P###-C##` identifies a chunk extracted from one PDF page. IDs are deterministic during ingestion. Chunks remain page-bounded; retrieval may attach adjacent chunks in document order so a rule can continue naturally across a page boundary.
+## Trust boundary
 
-## Trust layers
+Pinned artifacts and importer-specific provenance checks establish representation identity. Search eligibility requires approved, licensed, enabled, active-edition evidence that passes identity and quarantine policy. Conflicted families fail closed; representations never vote. Only evidence cited by answer claims appears in provenance, rendered to players as the single `SRD 5.2.1` authority.
 
-1. **Source integrity:** SHA-256 pin before ingestion and retrieval.
-2. **Closed corpus:** no network retrieval path in the answer engine.
-3. **Deterministic retrieval planning:** aliases and concepts affect where Archie searches, never what it asserts.
-4. **Retrieval before generation:** answer model sees explicit local evidence.
-5. **Citation binding:** claim evidence IDs must exist in the supplied packet.
-6. **Claim audit:** a second evidence-only pass validates each structured claim.
-7. **Answer-coverage audit:** the auditor also checks that every factual mechanic in the player-facing answer is represented by supported claims.
-8. **Fail closed:** audit uncertainty yields `PARTIAL` rather than guessed rules.
-9. **Human inspectability:** CLI exposes evidence IDs, PDF pages, retrieval roles, and diagnostics.
-
-No single layer guarantees correctness. The architecture is intentionally redundant so unsupported rules are difficult to emit silently.
+Retrieval and rules logic live in the Archie core answer service shared by CLI and Pi. Local model generation is followed by deterministic evidence-ID validation and an evidence-only audit; uncertainty remains fail-closed under the v1.6 epistemic contract.

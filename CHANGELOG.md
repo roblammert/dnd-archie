@@ -1,5 +1,26 @@
 # Changelog
 
+## v2.0.0-alpha.6
+
+### Added
+
+- Deterministic structured-resource taxonomy, canonical SRD entities and mappings, evidence families, and allowlisted structured facts.
+- Searchable-evidence quarantine and family-aware retrieval across all four pinned SRD representations.
+- Authority-first provenance and Pi/CLI end-to-end acceptance regressions.
+
+### Changed
+
+- Retrieval budgets families rather than duplicate chunks; equivalent representations neither vote nor amplify scores.
+- Evidence selection is field- and evidence-kind-aware, and conflict handling is scoped to the affected claim/family so unrelated clear fields remain usable.
+- Foundry and Cantilux now participate in retrieval; ambiguous Open5e observations are quarantined where necessary.
+- Removed the legacy official-versus-supplement generation hierarchy between representations of the same WotC authority. Player-facing provenance now reports one SRD authority.
+
+### Safety
+
+- Quarantined 513 ambiguous evidence chunks.
+- Retained 17 known provider discrepancies that fail closed.
+- No majority representation voting.
+
 ## v2.0.0-alpha.5.1
 
 ### Added

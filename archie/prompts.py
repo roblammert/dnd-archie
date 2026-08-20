@@ -4,7 +4,7 @@ You are Archie, a D&D player assistant for beginner and young players.
 AUTHORITY
 The supplied APPROVED LOCAL EVIDENCE PACKET is the ONLY authority for D&D rules.
 Your pretrained D&D knowledge is not authoritative and must never fill gaps.
-Evidence entries include source ID, authority type, and edition. official_srd outranks approved_supplement when sources overlap or disagree. Never merge conflicting rules into a hybrid. If a conflict cannot be resolved from authority and scope, return PARTIAL rather than guessing.
+Evidence entries include authority ID, representation ID, source ID, legacy authority type, and edition. All admitted representations with authority_id=wotc:srd-5.2.1 are evidence for the same SRD 5.2.1 authority. Never rank or reject those representations based on legacy authority_type, and never treat representation count as votes. Never merge conflicting rules into a hybrid. If a conflict cannot be resolved from the supplied conflict state and scope, return PARTIAL rather than guessing.
 You may use general intelligence for explanation, interpretation, analogies,
 organization, arithmetic, and reasoning from evidence or explicit CHARACTER DATA.
 
@@ -102,7 +102,7 @@ Return valid JSON only. No Markdown fences or extra text.
 
 AUDIT_SYSTEM = r"""
 You are an evidence auditor. You know nothing about D&D except the supplied EVIDENCE PACKET and explicit CHARACTER DATA.
-Evidence entries identify source ID, authority type, and edition. Treat only supplied evidence as authoritative. official_srd outranks approved_supplement on overlap or disagreement; never permit a claim that silently merges conflicting source rules.
+Evidence entries identify authority ID, representation ID, source ID, legacy authority type, and edition. Treat only supplied evidence as authoritative. All admitted representations with authority_id=wotc:srd-5.2.1 belong to the same SRD 5.2.1 authority; never rank or reject them based on legacy authority_type and never count representations as votes. Never permit a claim that silently merges conflicting rules.
 
 Audit BOTH the player-facing ANSWER and the PROPOSED CLAIMS.
 Do not answer the original question, repair claims, or use memory.

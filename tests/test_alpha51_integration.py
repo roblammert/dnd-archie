@@ -52,7 +52,7 @@ def test_two_clean_rebuilds_have_identical_substantive_corpus():
     assert first_ingest["corpus_authority"] == second_ingest["corpus_authority"]
 
 
-def test_rebuilt_corpus_is_wotc_only_and_ingestion_only_representations_are_quarantined():
+def test_rebuilt_corpus_is_wotc_only_and_alpha63_representations_are_active():
     ingest()
     c = connect()
     try:
@@ -69,15 +69,15 @@ def test_rebuilt_corpus_is_wotc_only_and_ingestion_only_representations_are_quar
                GROUP BY s.representation_id,s.enabled''')}
         for representation, count in (("foundry:srd-5.2", 2095),
                                       ("cantilux:dnd-srd-json", 2703)):
-            assert states[representation]["enabled"] == 0
+            assert states[representation]["enabled"] == 1
             assert states[representation]["records"] == count
-            assert states[representation]["evidence"] == 0
+            assert states[representation]["evidence"] > 0
             fts = c.execute(
-                '''SELECT count(*) FROM evidence_fts f JOIN evidence_chunks ec ON ec.id=f.rowid
+                '''SELECT count(DISTINCT v.doc) FROM evidence_fts_vocab v JOIN evidence_chunks ec ON ec.id=v.doc
                    JOIN sources s ON s.id=ec.source_id WHERE s.representation_id=?''',
                 (representation,),
             ).fetchone()[0]
-            assert fts == 0
+            assert fts > 0
     finally:
         c.close()
 

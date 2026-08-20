@@ -43,4 +43,4 @@ To reproduce the snapshot from an already checked-out pinned repository:
 
 Omit `--checkout` to fetch the immutable commit. Acquisition verifies `HEAD`,
 validates corpus identity, and preserves the canonical upstream bytes.
-Cantilux is intentionally disabled and non-searchable in alpha.5.1.
+In alpha.6, the pinned Cantilux representation is enabled and contributes evidence subject to deterministic identity mapping and ambiguity quarantine.

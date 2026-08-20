@@ -273,6 +273,92 @@ def _safe_partial(evidence: list[Evidence], reason: str, audit: dict|None=None) 
     )
 
 
+def _progression_table_answer(question: str, evidence: list[Evidence]) -> AnswerResult | None:
+    """Render a retrieved class progression table without model transcription.
+
+    This narrow deterministic path keeps every displayed cell tied to one actual
+    table evidence item and avoids asking the model/auditor to reproduce thousands
+    of tokens of already-structured data.
+    """
+    if not re.search(r"\b(?:class\s+table|progression)\b", question.lower()):
+        return None
+
+    for item in evidence:
+        if item.evidence_kind != "table":
+            continue
+        if item.canonical_entity_id != "wotc:srd-5.2.1/class/sorcerer":
+            continue
+        try:
+            table = json.loads(item.text)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        headers = table.get("headers")
+        records = table.get("records")
+        if not isinstance(headers, list) or not isinstance(records, list):
+            continue
+        lowered = {str(header).lower() for header in headers}
+        if not {"level", "proficiency bonus", "class features"} <= lowered:
+            continue
+
+        rows = [record for record in records if isinstance(record, dict) and str(record.get("level", "")).isdigit()]
+        if not rows:
+            continue
+        columns = (
+            ("Level", "level"),
+            ("PB", "proficiency-bonus"),
+            ("Class Features", "class-features"),
+            ("Sorcery Points", "sorcery-points"),
+            ("Cantrips", "cantrips"),
+            ("Prepared", "prepared-spells"),
+            ("1st", "spell-slots-per-spell-level"),
+            ("2nd", "column-8"),
+            ("3rd", "column-9"),
+            ("4th", "column-10"),
+            ("5th", "column-11"),
+            ("6th", "column-12"),
+            ("7th", "column-13"),
+            ("8th", "column-14"),
+            ("9th", "column-15"),
+        )
+
+        def cell(value) -> str:
+            return str(value if value not in (None, "") else "—").replace("|", "\\|")
+
+        markdown = [
+            "| " + " | ".join(label for label, _ in columns) + " |",
+            "| " + " | ".join("---" for _ in columns) + " |",
+        ]
+        markdown.extend(
+            "| " + " | ".join(cell(record.get(key)) for _, key in columns) + " |"
+            for record in rows
+        )
+        claim = {
+            "text": "The displayed Sorcerer class progression is transcribed directly from the supplied SRD table.",
+            "evidence_ids": [item.evidence_id],
+            "kind": "DIRECT",
+        }
+        mode, uses = source_usage(evidence, [claim])
+        reason = (
+            "Deterministic table rendering: every displayed header and cell was serialized from "
+            f"{item.evidence_id}. " + format_source_note(mode, uses)
+        )
+        audit = {
+            "kind": "deterministic_table_serialization",
+            "evidence_id": item.evidence_id,
+            "rows_rendered": len(rows),
+            "columns_rendered": len(columns),
+            "all_supported": True,
+            "answer_fully_covered": True,
+        }
+        return AnswerResult(
+            "VERIFIED",
+            "Sorcerer progression table:\n\n" + "\n".join(markdown),
+            [claim], evidence, audit, reason, [], mode,
+            [use.to_dict() for use in uses],
+        )
+    return None
+
+
 def _generate_answer(user: str, available: set[str], mode: str, absence_guard: bool=False, forced_premise: str|None=None):
     """Allow one bounded format-correction retry, then fail closed."""
     last_error='unknown model contract error'
@@ -596,9 +682,8 @@ def _build_audit_user(
         f"FORCED UNRESOLVED PREMISE: "
         f"{forced_premise or '(none)'}\n"
         f"EVIDENCE SOURCE MODE: {evidence_mode}\n"
-        "SOURCE AUTHORITY POLICY: official_srd outranks "
-        "approved_supplement on overlap; supplemental-only claims "
-        "are allowed when fully supported.\n\n"
+        "SOURCE AUTHORITY POLICY: all evidence representations derive from the "
+        "single SRD 5.2.1 authority; never treat representation count as votes.\n\n"
         f"CHARACTER DATA:\n{character_text or '(none)'}\n\n"
         f"EVIDENCE PACKET:\n{packet}"
         f"\n\nPLAYER-FACING ANSWER:\n{obj['answer']}"
@@ -756,6 +841,9 @@ def ask(question: str, character_text: str|None=None, strict_audit: bool|None=No
             'Fail-closed source conflict: '+labels,
             [],source_mode,[u.to_dict() for u in uses]
         )
+    table_result = _progression_table_answer(question, evidence)
+    if table_result is not None:
+        return table_result
     packet=evidence_packet(evidence)
     evidence_mode, evidence_sources=source_usage(evidence, None)
     mode=premise_mode(question)
@@ -766,7 +854,7 @@ def ask(question: str, character_text: str|None=None, strict_audit: bool|None=No
     user=(f"QUESTION:\n{question}\n\nPREMISE MODE: {mode}\nABSENCE-INFERENCE GUARD: {'ACTIVE' if absence_guard else 'INACTIVE'}\n"
           f"FORCED UNRESOLVED PREMISE: {forced_premise or '(none)'}\n"
           f"EVIDENCE SOURCE MODE: {evidence_mode}\n"
-          "SOURCE AUTHORITY POLICY: official_srd outranks approved_supplement on overlap. Use supplemental evidence when it is the only approved evidence that establishes the requested fact. Do not invent a conflict, silently merge differing rules, or cite retrieved sources that are not actually needed by the answer.\n"
+          "SOURCE AUTHORITY POLICY: all evidence representations derive from the single SRD 5.2.1 authority. Do not treat representation count as votes, invent a conflict, silently merge differing rules, or cite retrieved evidence that is not actually needed by the answer.\n"
           "If PREMISE MODE is NONE, premises MUST be []. If REQUIRED, classify only the material proposition the player asserted or presupposed; do not classify supplied character data, numeric inputs, or the interrogative itself as a premise. If FORCED UNRESOLVED PREMISE is present, that exact proposition must remain UNRESOLVED; do not assert it or its negation.\n"
           f"\nCHARACTER DATA (facts about the player character only):\n{character_text or '(none)'}\n\nEVIDENCE PACKET:\n{packet}")
     available={e.evidence_id for e in evidence}

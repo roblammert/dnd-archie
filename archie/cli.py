@@ -11,6 +11,9 @@ from .config import settings
 from .open5e import discover_open5e, inventory_from_snapshot, import_open5e_document
 from .foundry import acquire_foundry_snapshot, import_foundry_snapshot
 from .cantilux import acquire_cantilux_snapshot, import_cantilux_snapshot
+from .db import connect
+from .identity import identity_fingerprint, identity_report
+from .evidence_families import evidence_fingerprint, evidence_report
 
 
 def print_answer(r):
@@ -25,8 +28,8 @@ def print_answer(r):
         print('\nSources used:')
         for src in r.sources_used:
             evidence_count=len(src.get('evidence_ids',[]))
-            print(f"- {src['source_id']} [{src['authority_type']}, {src.get('edition') or '-'}] — {evidence_count} cited evidence item(s)")
-        print(f"Authority mode: {getattr(r,'source_mode','none')}")
+            print(f"- {src['source_id']} [{src.get('edition') or '-'}] — {evidence_count} cited evidence item(s)")
+        print("Authority: SRD 5.2.1")
     print(f"\nProvenance: {r.reason}")
 
 
@@ -54,6 +57,16 @@ def main(argv=None):
     a=sub.add_parser('ask'); a.add_argument('question'); a.add_argument('--character'); a.add_argument('--no-audit',action='store_true')
     sub.add_parser('characters')
     sub.add_parser('doctor')
+    ident=sub.add_parser('identity',help='Inspect deterministic structured-resource identity')
+    idsub=ident.add_subparsers(dest='identity_cmd',required=True)
+    for command in ('report','unmapped','ambiguous'):
+        ip=idsub.add_parser(command); ip.add_argument('--json',action='store_true')
+    ie=idsub.add_parser('show'); ie.add_argument('entity_id'); ie.add_argument('--json',action='store_true')
+    ev=sub.add_parser('evidence',help='Inspect alpha.6.2 evidence families')
+    evsub=ev.add_subparsers(dest='evidence_cmd',required=True)
+    evsub.add_parser('report')
+    evf=evsub.add_parser('family'); evf.add_argument('family_id')
+    evsub.add_parser('conflicts')
 
     src=sub.add_parser('sources',help='Inspect and verify the local Source Library')
     srcsub=src.add_subparsers(dest='sources_cmd',required=True)
@@ -96,6 +109,47 @@ def main(argv=None):
             print_answer(ask(args.question,raw,strict_audit=not args.no_audit))
         elif args.cmd=='characters':
             for x in list_characters(): print(x.name)
+        elif args.cmd=='identity':
+            c=connect()
+            try:
+                if args.identity_cmd=='report':
+                    x=identity_report(c); x['fingerprint']=identity_fingerprint(c)
+                elif args.identity_cmd=='show':
+                    row=c.execute('SELECT * FROM canonical_entities WHERE id=?',(args.entity_id,)).fetchone()
+                    if not row: raise ValueError(f'Unknown canonical entity: {args.entity_id}')
+                    x=dict(row); x['mappings']=[dict(r) for r in c.execute(
+                        '''SELECT cr.representation_id,cr.content_type,cr.name,cr.upstream_id,cr.upstream_path,em.status,em.method
+                           FROM entity_mappings em JOIN content_records cr ON cr.id=em.content_record_id
+                           WHERE em.canonical_entity_id=? ORDER BY cr.representation_id,cr.upstream_path''',(args.entity_id,))]
+                else:
+                    x=[dict(r) for r in c.execute(
+                        '''SELECT cr.id,cr.representation_id,cr.content_type,cr.name,cr.upstream_id,cr.upstream_path,
+                                  em.status,em.method,em.mapping_key,em.detail_json
+                           FROM entity_mappings em JOIN content_records cr ON cr.id=em.content_record_id
+                           WHERE em.status=? ORDER BY cr.representation_id,cr.content_type,cr.name,cr.upstream_path''',
+                        (args.identity_cmd,))]
+                if getattr(args,'json',False): print(json.dumps(x,indent=2))
+                else: print(json.dumps(x,indent=2))
+            finally: c.close()
+        elif args.cmd=='evidence':
+            c=connect()
+            try:
+                if args.evidence_cmd=='report':
+                    x=evidence_report(c); x['fingerprint']=evidence_fingerprint(c)
+                elif args.evidence_cmd=='conflicts':
+                    x=[dict(r) for r in c.execute("SELECT * FROM evidence_families WHERE conflict_status='conflicted' ORDER BY id")]
+                else:
+                    family=c.execute('SELECT * FROM evidence_families WHERE id=?',(args.family_id,)).fetchone()
+                    if not family: raise ValueError(f'Unknown evidence family: {args.family_id}')
+                    x=dict(family); x['members']=[dict(r) for r in c.execute(
+                        '''SELECT ec.evidence_id,ec.evidence_kind,ec.searchable,efm.representation_id,efm.evidence_role,
+                                  efm.normalized_digest,dup.evidence_id exact_duplicate_of,ec.heading,ec.text
+                           FROM evidence_family_members efm JOIN evidence_chunks ec ON ec.id=efm.evidence_chunk_id
+                           LEFT JOIN evidence_chunks dup ON dup.id=efm.exact_duplicate_of
+                           WHERE efm.family_id=? ORDER BY ec.evidence_id''',(args.family_id,))]
+                    x['facts']=[dict(r) for r in c.execute('SELECT * FROM evidence_facts WHERE family_id=? ORDER BY field_key,id',(args.family_id,))]
+                print(json.dumps(x,indent=2))
+            finally: c.close()
         elif args.cmd=='sources':
             if args.sources_cmd=='list':
                 rows=list_sources()
@@ -158,14 +212,14 @@ def main(argv=None):
                     print(f"Revision: {x['upstream_revision']}\nSHA-256: {x['content_sha256']}\nRecords: {x['content_records']}\nEvidence chunks: 0")
                     diag=x['diagnostics']
                     print(f"Observed: {diag['observed']}\nAccepted: {diag['accepted']}\nRejected non-WotC: {diag['rejected_non_wotc']}\nInvalid provenance: {diag['invalid_provenance']}\nNormalization failures: {diag['normalization_failures']}")
-                    print(f"{args.provider.title()} remains unavailable to answer retrieval in alpha.5.1.")
+                    print(f"{args.provider.title()} remains unavailable to answer retrieval until approved and enabled.")
                 else:
                     print(f"Imported {x['source_id']} as local structured content.")
                     print(f"Version: {x['version']}\nSHA-256: {x['content_sha256']}\nRecords: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}")
                     diag=x['diagnostics']
                     print(f"Observed: {diag['observed']}\nAccepted: {diag['accepted']}\nRejected non-WotC: {diag['rejected_non_wotc']}\nInvalid provenance: {diag['invalid_provenance']}\nNormalization failures: {diag['normalization_failures']}")
                     print(f"Approved: no\nEnabled: no\nLicense status: {x['license_status']}")
-                    print('Import does not grant authority. Open5e content remains unavailable to answer retrieval in alpha.5.')
+                    print('Import does not grant authority. Open5e content remains unavailable to answer retrieval until approved and enabled.')
             elif args.sources_cmd=='approve':
                 x=approve_source(args.source_id,license_name=args.license_name,license_url=args.license_url,note=args.note)
                 if args.json: print(json.dumps(x,indent=2,default=str))

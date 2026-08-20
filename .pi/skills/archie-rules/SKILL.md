@@ -6,7 +6,7 @@ description: Answers D&D rules questions using only evidence retrieved from the 
 
 # Archie Rules
 
-For every D&D rules question, route through the evidence-gated executable instead of answering from model memory.
+For every D&D rules question, including a follow-up that repeats or refers to a fact already discussed, route through the evidence-gated executable in the current turn instead of answering from model or conversation memory. Prior conversation may inform query wording, but it is never evidence for a new factual answer.
 
 ```bash
 python -m archie.cli ask "<user question>"

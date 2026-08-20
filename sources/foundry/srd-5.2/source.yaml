@@ -5,7 +5,7 @@ authority_type: approved_supplement
 authority_id: wotc:srd-5.2.1
 representation_id: foundry:srd-5.2
 edition: "2024"
-enabled: false
+enabled: true
 approved: true
 license_status: present
 provider: foundry-dnd5e

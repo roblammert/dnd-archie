@@ -189,12 +189,12 @@ def test_area_effect_spelling_mismatch_is_not_a_general_alias(internal_collectio
     ) == "invalid_provenance"
 
 
-def test_committed_manifest_and_full_bundle_are_pinned_complete_and_quarantined(monkeypatch):
+def test_committed_manifest_and_full_bundle_are_pinned_complete(monkeypatch):
     manifest = load_source_manifest(ROOT / "sources/cantilux/dnd-srd-json/source.yaml")
     assert (manifest.id, manifest.authority_id, manifest.representation_id) == (
         cantilux.SOURCE_ID, cantilux.AUTHORITY_ID, cantilux.REPRESENTATION_ID)
     assert manifest.upstream_revision == REVISION
-    assert manifest.enabled is False and manifest.approved is True
+    assert manifest.enabled is True and manifest.approved is True
     assert hashlib.sha256(RAW_PATH.read_bytes()).hexdigest() == manifest.sha256
 
     c = _connection()
@@ -226,10 +226,5 @@ def test_committed_manifest_and_full_bundle_are_pinned_complete_and_quarantined(
     rebuilt.close()
 
 
-def test_cantilux_cannot_be_enabled_or_materialized(monkeypatch):
-    manifest_path = ROOT / "sources/cantilux/dnd-srd-json/source.yaml"
-    monkeypatch.setattr(source_library, "_manifest_data", lambda source_id: (
-        manifest_path, {"representation_id": cantilux.REPRESENTATION_ID, "approved": True}
-    ))
-    with pytest.raises(ValueError, match="ingestion-only"):
-        source_library.enable_source(cantilux.SOURCE_ID)
+def test_cantilux_manifest_is_enabled_for_alpha63():
+    assert load_source_manifest(ROOT / "sources/cantilux/dnd-srd-json/source.yaml").enabled is True
