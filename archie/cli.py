@@ -11,6 +11,8 @@ from .config import settings
 from .open5e import discover_open5e, inventory_from_snapshot, import_open5e_document
 from .foundry import acquire_foundry_snapshot, import_foundry_snapshot
 from .cantilux import acquire_cantilux_snapshot, import_cantilux_snapshot
+from .db import connect
+from .identity import identity_fingerprint, identity_report
 
 
 def print_answer(r):
@@ -54,6 +56,11 @@ def main(argv=None):
     a=sub.add_parser('ask'); a.add_argument('question'); a.add_argument('--character'); a.add_argument('--no-audit',action='store_true')
     sub.add_parser('characters')
     sub.add_parser('doctor')
+    ident=sub.add_parser('identity',help='Inspect deterministic structured-resource identity')
+    idsub=ident.add_subparsers(dest='identity_cmd',required=True)
+    for command in ('report','unmapped','ambiguous'):
+        ip=idsub.add_parser(command); ip.add_argument('--json',action='store_true')
+    ie=idsub.add_parser('show'); ie.add_argument('entity_id'); ie.add_argument('--json',action='store_true')
 
     src=sub.add_parser('sources',help='Inspect and verify the local Source Library')
     srcsub=src.add_subparsers(dest='sources_cmd',required=True)
@@ -96,6 +103,28 @@ def main(argv=None):
             print_answer(ask(args.question,raw,strict_audit=not args.no_audit))
         elif args.cmd=='characters':
             for x in list_characters(): print(x.name)
+        elif args.cmd=='identity':
+            c=connect()
+            try:
+                if args.identity_cmd=='report':
+                    x=identity_report(c); x['fingerprint']=identity_fingerprint(c)
+                elif args.identity_cmd=='show':
+                    row=c.execute('SELECT * FROM canonical_entities WHERE id=?',(args.entity_id,)).fetchone()
+                    if not row: raise ValueError(f'Unknown canonical entity: {args.entity_id}')
+                    x=dict(row); x['mappings']=[dict(r) for r in c.execute(
+                        '''SELECT cr.representation_id,cr.content_type,cr.name,cr.upstream_id,cr.upstream_path,em.status,em.method
+                           FROM entity_mappings em JOIN content_records cr ON cr.id=em.content_record_id
+                           WHERE em.canonical_entity_id=? ORDER BY cr.representation_id,cr.upstream_path''',(args.entity_id,))]
+                else:
+                    x=[dict(r) for r in c.execute(
+                        '''SELECT cr.id,cr.representation_id,cr.content_type,cr.name,cr.upstream_id,cr.upstream_path,
+                                  em.status,em.method,em.mapping_key,em.detail_json
+                           FROM entity_mappings em JOIN content_records cr ON cr.id=em.content_record_id
+                           WHERE em.status=? ORDER BY cr.representation_id,cr.content_type,cr.name,cr.upstream_path''',
+                        (args.identity_cmd,))]
+                if getattr(args,'json',False): print(json.dumps(x,indent=2))
+                else: print(json.dumps(x,indent=2))
+            finally: c.close()
         elif args.cmd=='sources':
             if args.sources_cmd=='list':
                 rows=list_sources()

@@ -2,7 +2,7 @@ from __future__ import annotations
 import sqlite3
 from .config import settings
 
-SCHEMA_VERSION = "5"
+SCHEMA_VERSION = "6"
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -70,6 +70,34 @@ CREATE TABLE IF NOT EXISTS content_records(
   FOREIGN KEY(source_version_id) REFERENCES source_versions(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS ix_content_records_source ON content_records(source_id, content_type);
+
+CREATE TABLE IF NOT EXISTS canonical_entities(
+  id TEXT PRIMARY KEY,
+  authority_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  canonical_key TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  parent_entity_id TEXT,
+  taxonomy_version TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  UNIQUE(authority_id,entity_type,canonical_key),
+  FOREIGN KEY(parent_entity_id) REFERENCES canonical_entities(id)
+);
+
+CREATE TABLE IF NOT EXISTS entity_mappings(
+  content_record_id INTEGER PRIMARY KEY,
+  canonical_entity_id TEXT,
+  status TEXT NOT NULL CHECK(status IN ('mapped','unmapped','ambiguous')),
+  method TEXT NOT NULL CHECK(method IN ('structural_id','explicit_crosswalk','semantic_key','reviewed_alias','singleton','none')),
+  mapping_key TEXT,
+  mapping_version TEXT NOT NULL,
+  detail_json TEXT,
+  CHECK((status='mapped' AND canonical_entity_id IS NOT NULL AND method<>'none') OR
+        (status<>'mapped' AND canonical_entity_id IS NULL)),
+  FOREIGN KEY(content_record_id) REFERENCES content_records(id) ON DELETE CASCADE,
+  FOREIGN KEY(canonical_entity_id) REFERENCES canonical_entities(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_entity_mappings_entity ON entity_mappings(canonical_entity_id);
 
 CREATE TABLE IF NOT EXISTS evidence_chunks(
   id INTEGER PRIMARY KEY,

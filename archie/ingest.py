@@ -8,6 +8,7 @@ from .source import verify_source, get_source_manifest, validate_content_authori
 from .open5e import rehydrate_open5e_imports
 from .foundry import rehydrate_foundry_imports
 from .cantilux import rehydrate_cantilux_imports
+from .identity import build_identity, identity_fingerprint
 
 MAX_CHARS=1800
 OVERLAP_PARAGRAPHS=1
@@ -113,6 +114,8 @@ def ingest() -> dict:
         restored_foundry=rehydrate_foundry_imports(c, now)
         restored_cantilux=rehydrate_cantilux_imports(c, now)
         corpus_authority=validate_content_authority(c)
+        identity=build_identity(c)
+        identity_hash=identity_fingerprint(c)
     c.close(); doc.close()
     return ({'ok':True,**meta,'restored_open5e_sources':restored['sources'],
              'restored_open5e_records':restored['content_records'],
@@ -123,4 +126,5 @@ def ingest() -> dict:
                'restored_cantilux_sources':restored_cantilux['sources'],
                'restored_cantilux_records':restored_cantilux['content_records'],
                'restored_cantilux_diagnostics':restored_cantilux['diagnostics'],
-               'corpus_authority':corpus_authority})
+               'corpus_authority':corpus_authority,
+               'identity':identity,'identity_fingerprint':identity_hash})
