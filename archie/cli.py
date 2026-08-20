@@ -212,14 +212,14 @@ def main(argv=None):
                     print(f"Revision: {x['upstream_revision']}\nSHA-256: {x['content_sha256']}\nRecords: {x['content_records']}\nEvidence chunks: 0")
                     diag=x['diagnostics']
                     print(f"Observed: {diag['observed']}\nAccepted: {diag['accepted']}\nRejected non-WotC: {diag['rejected_non_wotc']}\nInvalid provenance: {diag['invalid_provenance']}\nNormalization failures: {diag['normalization_failures']}")
-                    print(f"{args.provider.title()} remains unavailable to answer retrieval in alpha.5.1.")
+                    print(f"{args.provider.title()} remains unavailable to answer retrieval until approved and enabled.")
                 else:
                     print(f"Imported {x['source_id']} as local structured content.")
                     print(f"Version: {x['version']}\nSHA-256: {x['content_sha256']}\nRecords: {x['content_records']}\nEvidence chunks: {x['evidence_chunks']}")
                     diag=x['diagnostics']
                     print(f"Observed: {diag['observed']}\nAccepted: {diag['accepted']}\nRejected non-WotC: {diag['rejected_non_wotc']}\nInvalid provenance: {diag['invalid_provenance']}\nNormalization failures: {diag['normalization_failures']}")
                     print(f"Approved: no\nEnabled: no\nLicense status: {x['license_status']}")
-                    print('Import does not grant authority. Open5e content remains unavailable to answer retrieval in alpha.5.')
+                    print('Import does not grant authority. Open5e content remains unavailable to answer retrieval until approved and enabled.')
             elif args.sources_cmd=='approve':
                 x=approve_source(args.source_id,license_name=args.license_name,license_url=args.license_url,note=args.note)
                 if args.json: print(json.dumps(x,indent=2,default=str))

@@ -1,21 +1,10 @@
-# Archie v2.0.0-alpha.5.1
+# Archie v2.0.0-alpha.6
 
-Archie is a local, evidence-gated D&D player assistant. SRD 5.2.1, identified as `wotc:srd-5.2.1`, is its sole D&D rules authority.
+Archie is a local, evidence-gated D&D player assistant. SRD 5.2.1 is its one rules authority; Gemma pretrained D&D knowledge is never rules evidence.
 
-## What changed
+Archie retrieves from four pinned representations of that authority: the official WotC PDF, Open5e SRD-2024, Foundry SRD 5.2, and Cantilux dnd-srd-json. Equivalent representations do not vote or strengthen a claim by repetition. Ambiguous identities are quarantined, and conflicting claims fail closed without hiding unrelated clear facts. Player-facing provenance reports `Authority: SRD 5.2.1`.
 
-Approved Open5e `srd-2024` evidence can now participate in answers with deterministic source provenance. Every answer is classified as:
-
-- `official_only`
-- `supplemental_only`
-- `mixed`
-- `none`
-
-Only sources actually cited by answer claims are reported as used. The official SRD remains higher priority than approved supplements. Exact duplicate evidence is suppressed before generation. Conflicting same-entity structured records fail closed before the LLM is called.
-
-Gemma pretrained D&D knowledge remains non-authoritative.
-
-Alpha.5.1 stores four pinned representations of that authority: the official PDF, Open5e SRD-2024, Foundry SRD 5.2, and Cantilux dnd-srd-json. The official and Open5e representations retain existing search behavior. Foundry and Cantilux are ingestion-only, disabled, and non-searchable, so they do not alter answers.
+Every new D&D rules-fact question handled through Pi is grounded with current Archie retrieval, even if a related fact appeared earlier in the conversation.
 
 ## Bootstrap
 
@@ -23,47 +12,28 @@ Alpha.5.1 stores four pinned representations of that authority: the official PDF
 ./scripts/bootstrap.sh
 source .venv/bin/activate
 python -m archie.cli doctor
+python -m archie.cli ingest
 ```
 
-## Source lifecycle
-
-```bash
-python -m archie.cli sources discover open5e
-python -m archie.cli sources import open5e srd-2024
-python -m archie.cli sources approve open5e:srd-2024 \
-  --license-name "<verified license name>" \
-  --license-url "<verified license URL>"
-python -m archie.cli sources enable open5e:srd-2024
-python -m archie.cli sources verify
-```
-
-Import, approval, and enablement remain separate states.
-
-## Answers
+## Ask and inspect
 
 ```bash
 python -m archie.cli ask "What classes can cast Fireball?"
+python -m archie.cli search "Fireball" --top-k 5
+python -m archie.cli diagnose-retrieval "What does Prone do?"
+python -m archie.cli sources list
+python -m archie.cli sources verify
 ```
 
-The CLI prints evidence-backed claims followed by the exact sources actually cited and the answer's authority mode.
+The CLI prints evidence-backed claims, the evidence actually cited, and the single SRD authority. Import, approval, and enablement remain separate source lifecycle states.
 
 ## Release checks
+
+Release work uses the repository virtual environment and committed pinned artifacts; deterministic checks require neither network access nor a live model.
 
 ```bash
 source .venv/bin/activate
 ./scripts/release_check.sh
-./scripts/run_regression.sh
-./scripts/run_epistemic_regression.sh
 ```
 
-After independently verifying Open5e SRD license metadata:
-
-```bash
-export ARCHIE_OPEN5E_LICENSE_NAME="<verified license name>"
-export ARCHIE_OPEN5E_LICENSE_URL="<verified license URL>"
-./scripts/run_multisource_answer_acceptance.sh
-```
-
-See `docs/MULTISOURCE_ANSWER_ALPHA5.md` for the alpha.5 trust contract.
-
-The FastAPI/HTMX web application is not part of alpha.5.
+See `docs/ARCHITECTURE.md`, `docs/OPERATIONS.md`, and `docs/VALIDATION.md` for developer details.

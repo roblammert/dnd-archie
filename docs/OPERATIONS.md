@@ -1,62 +1,60 @@
-# Operations — v2.0.0-alpha.5.1
+# Operations — v2.0.0-alpha.6
 
-Activate the repository virtual environment before operational or release commands:
+All release checks must run from the repository `.venv`:
 
 ```bash
 source .venv/bin/activate
 ```
 
-## llama-server
-
-Archie expects an OpenAI-compatible `/v1/chat/completions` endpoint. Configuration is loaded from the repo-root `.env`; existing shell environment variables take precedence.
-
-```bash
-cp .env.example .env
-```
-
-The llama.cpp request contract uses JSON-object response formatting, a bounded completion token count, and `enable_thinking=false` to keep local inference fast and predictable.
-
-Archie does not start or manage llama-server itself.
-
-## Rebuild the index
+## Verify and rebuild
 
 ```bash
 python -m archie.cli sources verify
 python -m archie.cli ingest
+python -m archie.cli sources list
 ```
 
-The index is a disposable derived artifact. Rebuild verifies the official PDF and rehydrates the pinned Open5e, Foundry, and Cantilux snapshots. Foundry and Cantilux remain disabled and create no evidence or FTS entries.
+The SQLite index is generated and disposable. Ingest rebuilds it from committed pinned artifacts. Alpha.6 expects all four representations—official, Open5e, Foundry, and Cantilux—to be approved, enabled, and eligible subject to per-evidence quarantine. Release validation is offline; source acquisition is not part of it.
 
-Pinned structured artifacts can be reproduced with the source acquisition commands (network or a verified local checkout) and imported explicitly:
+## Identity and evidence diagnostics
+
+The deterministic suite exercises identity reports, mappings, evidence families/facts, quarantine, conflicts, and activation state:
 
 ```bash
-python -m archie.cli sources acquire foundry --checkout /path/to/dnd5e
-python -m archie.cli sources acquire cantilux --checkout /path/to/dnd-srd-json
-python -m archie.cli sources import foundry sources/foundry/srd-5.2/raw/foundry-srd-5.2-release-5.2.0.json
-python -m archie.cli sources import cantilux sources/cantilux/dnd-srd-json/raw/cantilux-dnd-srd-json-df536fe94c92.json
+python -m pytest -q tests/test_identity_corpus_alpha61.py
+python -m pytest -q tests/test_evidence_families_alpha62.py
+python -m pytest -q tests/test_entity_retrieval_alpha63.py
+python -m archie.cli sources conflicts
 ```
 
-Release validation uses committed snapshots and does not require network acquisition.
-
-## Diagnose retrieval
+## Retrieval and source inspection
 
 ```bash
-python -m archie.cli diagnose-retrieval "What does Prone do?"
+python -m archie.cli search "Giant Fly" --top-k 5
+python -m archie.cli diagnose-retrieval "What is an Aboleth's Armor Class?" --top-k 5
+python -m archie.cli sources show srd521
+python -m archie.cli sources show open5e:srd-2024
+python -m archie.cli sources show foundry:srd-5.2
+python -m archie.cli sources show cantilux:dnd-srd-json
 ```
 
-Use diagnostics before changing prompts. A `NOT_IN_SRD` result for material known to be present usually indicates retrieval coverage, not a need to weaken the evidence policy.
+Activation is reversible through the existing `sources enable` and `sources disable` commands; tests verify that toggling a representation changes eligibility without deleting evidence or changing identity.
 
-## Source migration
+## Release gate
 
-Do not replace the PDF in place. A future SRD version should be a deliberate migration with a new source filename, SHA-256, authority ID, tests, and version bump.
+```bash
+./scripts/release_check.sh
+sha256sum -c SHA256SUMS
+git diff --check
+```
+
+The release check is deterministic, offline, and does not require llama-server. Live generation is separate from release blocking; high-level ask/service tests use deterministic fixtures.
 
 ## Failure modes
 
-- SHA mismatch: hard stop.
-- Missing or stale index: hard stop with instruction to ingest.
-- No retrieval hits: refusal to verify.
-- LLM unavailable: hard error; no fallback to pretrained D&D knowledge.
-- Malformed JSON: hard error; no unverified prose fallback.
-- Invented evidence ID: hard error.
-- Unsupported structured claim: fail-closed `PARTIAL`.
-- Unsupported factual mechanic in player-facing answer: fail-closed `PARTIAL`.
+- Pinned hash or provenance mismatch: hard stop.
+- Missing/stale index: rebuild required.
+- Ambiguous identity: quarantine.
+- Conflicted evidence family: affected claim fails closed.
+- No eligible retrieval evidence: do not verify the rule.
+- Model unavailable or malformed output: no fallback to pretrained D&D knowledge.

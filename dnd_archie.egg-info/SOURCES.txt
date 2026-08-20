@@ -9,7 +9,10 @@ archie/cli.py
 archie/concepts.py
 archie/config.py
 archie/db.py
+archie/evidence_families.py
+archie/evidence_selection.py
 archie/foundry.py
+archie/identity.py
 archie/ingest.py
 archie/llm.py
 archie/open5e.py
@@ -19,6 +22,8 @@ archie/retrieve.py
 archie/source.py
 archie/source_library.py
 archie/structured_evidence.py
+archie/structured_facts.py
+archie/taxonomy.py
 dnd_archie.egg-info/PKG-INFO
 dnd_archie.egg-info/SOURCES.txt
 dnd_archie.egg-info/dependency_links.txt
@@ -29,15 +34,22 @@ tests/test_alpha51_integration.py
 tests/test_alpha51_repairs.py
 tests/test_alpha5_reliability_patch.py
 tests/test_answer_guard.py
+tests/test_ask_acceptance_alpha6.py
 tests/test_audit_contract_v15.py
 tests/test_cantilux_import_alpha51.py
 tests/test_characters.py
+tests/test_entity_retrieval_alpha63.py
 tests/test_epistemic_v16.py
+tests/test_evidence_families_alpha62.py
 tests/test_foundry_import_alpha51.py
+tests/test_identity_alpha61.py
+tests/test_identity_boundary_alpha61.py
+tests/test_identity_corpus_alpha61.py
 tests/test_index_binding.py
 tests/test_ingest_retrieve.py
 tests/test_llm_contract_v15.py
 tests/test_multisource_alpha4.py
+tests/test_multisource_answer_alpha5.py
 tests/test_open5e_discovery_alpha2.py
 tests/test_open5e_import_alpha3.py
 tests/test_premise_enforcement_v163.py
@@ -49,3 +61,4 @@ tests/test_retrieval_v15.py
 tests/test_source.py
 tests/test_source_library_alpha1.py
 tests/test_source_model_alpha51.py
+tests/test_taxonomy_alpha61.py
