@@ -13,6 +13,7 @@ from .foundry import acquire_foundry_snapshot, import_foundry_snapshot
 from .cantilux import acquire_cantilux_snapshot, import_cantilux_snapshot
 from .db import connect
 from .identity import identity_fingerprint, identity_report
+from .evidence_families import evidence_fingerprint, evidence_report
 
 
 def print_answer(r):
@@ -61,6 +62,11 @@ def main(argv=None):
     for command in ('report','unmapped','ambiguous'):
         ip=idsub.add_parser(command); ip.add_argument('--json',action='store_true')
     ie=idsub.add_parser('show'); ie.add_argument('entity_id'); ie.add_argument('--json',action='store_true')
+    ev=sub.add_parser('evidence',help='Inspect alpha.6.2 evidence families')
+    evsub=ev.add_subparsers(dest='evidence_cmd',required=True)
+    evsub.add_parser('report')
+    evf=evsub.add_parser('family'); evf.add_argument('family_id')
+    evsub.add_parser('conflicts')
 
     src=sub.add_parser('sources',help='Inspect and verify the local Source Library')
     srcsub=src.add_subparsers(dest='sources_cmd',required=True)
@@ -124,6 +130,25 @@ def main(argv=None):
                         (args.identity_cmd,))]
                 if getattr(args,'json',False): print(json.dumps(x,indent=2))
                 else: print(json.dumps(x,indent=2))
+            finally: c.close()
+        elif args.cmd=='evidence':
+            c=connect()
+            try:
+                if args.evidence_cmd=='report':
+                    x=evidence_report(c); x['fingerprint']=evidence_fingerprint(c)
+                elif args.evidence_cmd=='conflicts':
+                    x=[dict(r) for r in c.execute("SELECT * FROM evidence_families WHERE conflict_status='conflicted' ORDER BY id")]
+                else:
+                    family=c.execute('SELECT * FROM evidence_families WHERE id=?',(args.family_id,)).fetchone()
+                    if not family: raise ValueError(f'Unknown evidence family: {args.family_id}')
+                    x=dict(family); x['members']=[dict(r) for r in c.execute(
+                        '''SELECT ec.evidence_id,ec.evidence_kind,ec.searchable,efm.representation_id,efm.evidence_role,
+                                  efm.normalized_digest,dup.evidence_id exact_duplicate_of,ec.heading,ec.text
+                           FROM evidence_family_members efm JOIN evidence_chunks ec ON ec.id=efm.evidence_chunk_id
+                           LEFT JOIN evidence_chunks dup ON dup.id=efm.exact_duplicate_of
+                           WHERE efm.family_id=? ORDER BY ec.evidence_id''',(args.family_id,))]
+                    x['facts']=[dict(r) for r in c.execute('SELECT * FROM evidence_facts WHERE family_id=? ORDER BY field_key,id',(args.family_id,))]
+                print(json.dumps(x,indent=2))
             finally: c.close()
         elif args.cmd=='sources':
             if args.sources_cmd=='list':

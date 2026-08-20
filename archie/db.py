@@ -2,7 +2,7 @@ from __future__ import annotations
 import sqlite3
 from .config import settings
 
-SCHEMA_VERSION = "6"
+SCHEMA_VERSION = "7"
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -109,12 +109,52 @@ CREATE TABLE IF NOT EXISTS evidence_chunks(
   page_label TEXT,
   heading TEXT NOT NULL,
   text TEXT NOT NULL,
+  evidence_kind TEXT NOT NULL DEFAULT 'prose' CHECK(evidence_kind IN ('pdf_prose','prose','structured_record','structured_field','table')),
+  searchable INTEGER NOT NULL DEFAULT 1 CHECK(searchable IN (0,1)),
   FOREIGN KEY(source_id) REFERENCES sources(id) ON DELETE CASCADE,
   FOREIGN KEY(source_version_id) REFERENCES source_versions(id) ON DELETE CASCADE,
   FOREIGN KEY(content_record_id) REFERENCES content_records(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS ix_evidence_source ON evidence_chunks(source_id);
 CREATE INDEX IF NOT EXISTS ix_evidence_page ON evidence_chunks(source_id, page_pdf);
+
+CREATE TABLE IF NOT EXISTS evidence_families(
+  id TEXT PRIMARY KEY,
+  authority_id TEXT NOT NULL,
+  canonical_entity_id TEXT,
+  family_type TEXT NOT NULL CHECK(family_type IN ('entity_summary','prose_rule','field','table','feature')),
+  semantic_key TEXT NOT NULL,
+  conflict_status TEXT NOT NULL DEFAULT 'clear' CHECK(conflict_status IN ('clear','conflicted')),
+  selection_version TEXT NOT NULL,
+  FOREIGN KEY(canonical_entity_id) REFERENCES canonical_entities(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_evidence_families_entity ON evidence_families(canonical_entity_id);
+
+CREATE TABLE IF NOT EXISTS evidence_family_members(
+  family_id TEXT NOT NULL,
+  evidence_chunk_id INTEGER NOT NULL,
+  representation_id TEXT NOT NULL,
+  evidence_role TEXT NOT NULL CHECK(evidence_role IN ('primary','equivalent','complementary','observation')),
+  normalized_digest TEXT NOT NULL,
+  exact_duplicate_of INTEGER,
+  PRIMARY KEY(family_id,evidence_chunk_id),
+  FOREIGN KEY(family_id) REFERENCES evidence_families(id) ON DELETE CASCADE,
+  FOREIGN KEY(evidence_chunk_id) REFERENCES evidence_chunks(id) ON DELETE CASCADE,
+  FOREIGN KEY(exact_duplicate_of) REFERENCES evidence_chunks(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS evidence_facts(
+  id TEXT PRIMARY KEY,
+  family_id TEXT NOT NULL,
+  evidence_chunk_id INTEGER NOT NULL,
+  field_key TEXT NOT NULL,
+  canonical_value TEXT NOT NULL,
+  display_value TEXT NOT NULL,
+  value_schema_version TEXT NOT NULL,
+  FOREIGN KEY(family_id) REFERENCES evidence_families(id) ON DELETE CASCADE,
+  FOREIGN KEY(evidence_chunk_id) REFERENCES evidence_chunks(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_evidence_facts_family ON evidence_facts(family_id,field_key);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS evidence_fts USING fts5(
   evidence_id UNINDEXED,
@@ -124,14 +164,21 @@ CREATE VIRTUAL TABLE IF NOT EXISTS evidence_fts USING fts5(
   content_rowid='id',
   tokenize='porter unicode61'
 );
-CREATE TRIGGER IF NOT EXISTS evidence_ai AFTER INSERT ON evidence_chunks BEGIN
+CREATE VIRTUAL TABLE IF NOT EXISTS evidence_fts_vocab USING fts5vocab(evidence_fts, instance);
+CREATE TRIGGER IF NOT EXISTS evidence_ai AFTER INSERT ON evidence_chunks WHEN new.searchable=1 BEGIN
  INSERT INTO evidence_fts(rowid,evidence_id,heading,text) VALUES(new.id,new.evidence_id,new.heading,new.text);
 END;
-CREATE TRIGGER IF NOT EXISTS evidence_ad AFTER DELETE ON evidence_chunks BEGIN
+CREATE TRIGGER IF NOT EXISTS evidence_ad AFTER DELETE ON evidence_chunks WHEN old.searchable=1 BEGIN
  INSERT INTO evidence_fts(evidence_fts,rowid,evidence_id,heading,text) VALUES('delete',old.id,old.evidence_id,old.heading,old.text);
 END;
-CREATE TRIGGER IF NOT EXISTS evidence_au AFTER UPDATE ON evidence_chunks BEGIN
+CREATE TRIGGER IF NOT EXISTS evidence_au_reindex AFTER UPDATE ON evidence_chunks WHEN old.searchable=1 AND new.searchable=1 BEGIN
  INSERT INTO evidence_fts(evidence_fts,rowid,evidence_id,heading,text) VALUES('delete',old.id,old.evidence_id,old.heading,old.text);
+ INSERT INTO evidence_fts(rowid,evidence_id,heading,text) VALUES(new.id,new.evidence_id,new.heading,new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS evidence_au_remove AFTER UPDATE ON evidence_chunks WHEN old.searchable=1 AND new.searchable=0 BEGIN
+ INSERT INTO evidence_fts(evidence_fts,rowid,evidence_id,heading,text) VALUES('delete',old.id,old.evidence_id,old.heading,old.text);
+END;
+CREATE TRIGGER IF NOT EXISTS evidence_au_add AFTER UPDATE ON evidence_chunks WHEN old.searchable=0 AND new.searchable=1 BEGIN
  INSERT INTO evidence_fts(rowid,evidence_id,heading,text) VALUES(new.id,new.evidence_id,new.heading,new.text);
 END;
 """

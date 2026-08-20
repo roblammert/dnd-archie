@@ -11,8 +11,8 @@ from archie.source import SourceIntegrityError, load_authority_declaration, load
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_schema_v6_retains_alpha51_ingestion_provenance_fields():
-    assert SCHEMA_VERSION == "6"
+def test_schema_v7_retains_alpha51_ingestion_provenance_fields():
+    assert SCHEMA_VERSION == "7"
     c = sqlite3.connect(":memory:")
     try:
         c.executescript(SCHEMA)

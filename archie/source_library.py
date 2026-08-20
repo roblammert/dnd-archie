@@ -80,6 +80,7 @@ def substantive_corpus_fingerprint(c=None) -> dict:
                       ec.page_pdf,ec.page_label,ec.heading,ec.text
                FROM evidence_chunks ec JOIN source_versions sv ON sv.id=ec.source_version_id
                LEFT JOIN content_records cr ON cr.id=ec.content_record_id
+               WHERE ec.searchable=1
                ORDER BY ec.source_id,ec.evidence_id''')]
         payload = {'schema_version': 1, 'sources': sources, 'content_records': records,
                    'evidence_chunks': evidence}
